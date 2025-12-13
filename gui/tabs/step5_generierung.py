@@ -2,7 +2,7 @@
 Step 5: PDF-Generierung
 ========================
 
-Progress-Anzeige und PDF-Download
+Progress-Anzeige und PDF-Download mit vollständiger Backend-Integration
 """
 
 from PyQt6.QtWidgets import (
@@ -10,41 +10,92 @@ from PyQt6.QtWidgets import (
     QProgressBar, QTextEdit, QMessageBox, QFileDialog
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QDesktopServices
+from PyQt6.QtCore import QUrl
+
+from core.latex_generator import generate_latex_for_klausur
+from core.pdf_compiler import PDFCompiler
+from core.pdf_reorderer import PDFReorderer
+from pathlib import Path
+import tempfile
+import shutil
 
 
 class PDFGeneratorThread(QThread):
     """Thread für PDF-Generierung (damit GUI nicht einfriert)"""
     
     progress = pyqtSignal(int, str)  # Progress (0-100), Status-Text
-    finished = pyqtSignal(bool, str)  # Success, Message/Error
+    finished = pyqtSignal(bool, str, str)  # Success, Message/Error, PDF-Path
     
     def __init__(self, klausur):
         super().__init__()
         self.klausur = klausur
+        self.pdf_path = None
         
     def run(self):
         """PDF generieren (in separatem Thread)"""
         try:
-            self.progress.emit(10, "Klausur-Daten werden vorbereitet...")
+            self.progress.emit(5, "Klausur-Daten werden vorbereitet...")
             
-            # TODO: LaTeX-Code generieren
-            self.progress.emit(30, "LaTeX-Code wird generiert...")
+            # LaTeX-Code generieren
+            self.progress.emit(15, "LaTeX-Code wird generiert...")
+            latex_code = generate_latex_for_klausur(self.klausur)
             
-            # TODO: PDF kompilieren
-            self.progress.emit(60, "PDF wird kompiliert...")
+            self.progress.emit(25, f"✅ LaTeX generiert ({len(latex_code)} Zeichen)")
             
-            # TODO: Seiten umsortieren (4-1-2-3)
-            self.progress.emit(80, "Seiten werden für Duplex-Druck umsortiert...")
+            # PDF kompilieren
+            self.progress.emit(30, "PDF wird kompiliert (kann 30-60 Sek dauern)...")
+            compiler = PDFCompiler()
+            pdf_bytes = compiler.compile_latex(latex_code)
             
-            # TODO: Datei speichern
-            self.progress.emit(95, "PDF wird gespeichert...")
+            if not pdf_bytes:
+                self.finished.emit(False, "Fehler bei PDF-Kompilierung", "")
+                return
             
+            self.progress.emit(65, "✅ PDF kompiliert")
+            
+            # Temporäre Datei erstellen
+            temp_dir = Path(tempfile.gettempdir()) / "klausurengenerator"
+            temp_dir.mkdir(exist_ok=True)
+            
+            temp_pdf = temp_dir / f"{self.klausur.dateiname_basis}_temp.pdf"
+            
+            with open(temp_pdf, 'wb') as f:
+                f.write(pdf_bytes)
+            
+            self.progress.emit(75, "Seiten werden für Duplex-Druck umsortiert...")
+            
+            # Seiten umsortieren (4-1-2-3)
+            reorderer = PDFReorderer()
+            final_pdf = temp_dir / f"{self.klausur.dateiname_basis}_Komplett.pdf"
+            
+            success = reorderer.reorder_pdf(str(temp_pdf), str(final_pdf))
+            
+            if not success:
+                # Falls Reordering fehlschlägt, verwende Original
+                final_pdf = temp_pdf
+                self.progress.emit(85, "⚠️ Reordering übersprungen")
+            else:
+                self.progress.emit(85, "✅ Seiten umsortiert")
+            
+            self.pdf_path = str(final_pdf)
+            
+            self.progress.emit(95, "PDF wird finalisiert...")
             self.progress.emit(100, "Fertig!")
-            self.finished.emit(True, "PDF erfolgreich generiert!")
+            
+            # Dateigröße ermitteln
+            size_mb = final_pdf.stat().st_size / (1024 * 1024)
+            
+            self.finished.emit(
+                True, 
+                f"PDF erfolgreich generiert! ({size_mb:.1f} MB)", 
+                self.pdf_path
+            )
             
         except Exception as e:
-            self.finished.emit(False, f"Fehler: {e}")
+            import traceback
+            error_msg = f"Fehler: {e}\n\n{traceback.format_exc()}"
+            self.finished.emit(False, error_msg, "")
 
 
 class Step5Generierung(QWidget):
@@ -180,20 +231,37 @@ class Step5Generierung(QWidget):
         current = self.status_text.toPlainText()
         self.status_text.setPlainText(current + f"\n{text}")
         
-    def on_finished(self, success, message):
+        # Scroll zum Ende
+        self.status_text.verticalScrollBar().setValue(
+            self.status_text.verticalScrollBar().maximum()
+        )
+        
+    def on_finished(self, success, message, pdf_path):
         """Generierung abgeschlossen"""
         
         if success:
             self.title_label.setText("✅ PDF erfolgreich generiert!")
             self.title_label.setStyleSheet("color: #28a745;")
             
-            klausur = self.parent_tab.klausur
-            filename = f"{klausur.dateiname_basis}_Komplett.pdf"
+            self.pdf_path = pdf_path
+            pdf_file = Path(pdf_path)
+            
+            # Dateiinfo
+            size_mb = pdf_file.stat().st_size / (1024 * 1024)
+            
+            # Seitenzahl aus PDF ermitteln
+            try:
+                from PyPDF2 import PdfReader
+                reader = PdfReader(pdf_path)
+                page_count = len(reader.pages)
+            except:
+                page_count = "?"
             
             self.pdf_info_label.setText(
-                f"<b>Datei:</b> {filename}<br>"
-                f"<b>Seiten:</b> ~100 (geschätzt)<br>"
-                f"<b>Größe:</b> ~3 MB (geschätzt)"
+                f"<b>Datei:</b> {pdf_file.name}<br>"
+                f"<b>Seiten:</b> {page_count}<br>"
+                f"<b>Größe:</b> {size_mb:.2f} MB<br>"
+                f"<b>Pfad:</b> {pdf_path}"
             )
             
             self.success_widget.setVisible(True)
@@ -201,7 +269,7 @@ class Step5Generierung(QWidget):
         else:
             self.title_label.setText("❌ Fehler bei PDF-Generierung")
             self.title_label.setStyleSheet("color: #dc3545;")
-            self.status_label.setText(message)
+            self.status_label.setText("Fehler aufgetreten")
             
             QMessageBox.critical(self, "Fehler", message)
             
@@ -210,6 +278,9 @@ class Step5Generierung(QWidget):
             
     def save_pdf(self):
         """PDF speichern unter..."""
+        if not self.pdf_path:
+            return
+        
         klausur = self.parent_tab.klausur
         default_name = f"{klausur.dateiname_basis}_Komplett.pdf"
         
@@ -221,13 +292,33 @@ class Step5Generierung(QWidget):
         )
         
         if file_path:
-            # TODO: Datei kopieren
-            QMessageBox.information(self, "Gespeichert", f"PDF gespeichert unter:\n{file_path}")
+            try:
+                shutil.copy2(self.pdf_path, file_path)
+                QMessageBox.information(
+                    self, 
+                    "Gespeichert", 
+                    f"PDF gespeichert unter:\n{file_path}"
+                )
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Fehler",
+                    f"Fehler beim Speichern:\n{e}"
+                )
             
     def open_pdf(self):
         """PDF öffnen"""
-        # TODO: PDF mit Standard-Viewer öffnen
-        QMessageBox.information(self, "Info", "PDF würde hier geöffnet werden")
+        if not self.pdf_path:
+            return
+        
+        try:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self.pdf_path))
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Fehler",
+                f"Fehler beim Öffnen:\n{e}"
+            )
         
     def validate(self):
         """Validierung"""
@@ -246,3 +337,4 @@ class Step5Generierung(QWidget):
         self.start_btn.setVisible(True)
         self.title_label.setText("Schritt 5/5: PDF wird generiert...")
         self.title_label.setStyleSheet("")
+        self.pdf_path = None
