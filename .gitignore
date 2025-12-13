@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyQt
+*.qmlc
+*.jsc
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Database (user muss eigene sus.db bereitstellen)
+database/sus.db
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+temp/
+tmp/
+
+# Test output
+test_output/
+output/
+*.pdf
+
+# Backup files
+*.bak
+*~

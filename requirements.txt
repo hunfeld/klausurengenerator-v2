@@ -1,0 +1,21 @@
+# Klausurengenerator v2.0 - Dependencies
+# ========================================
+
+# GUI Framework
+PyQt6>=6.6.0
+
+# PDF Handling
+PyPDF2>=3.0.0
+reportlab>=4.0.0
+
+# QR Code Generation
+qrcode>=7.4.2
+pillow>=10.0.0
+
+# HTTP Requests (für LaTeX-API)
+requests>=2.31.0
+
+# Database (SQLite ist bereits in Python enthalten)
+
+# Optional: Fortschrittsanzeige
+tqdm>=4.66.0
