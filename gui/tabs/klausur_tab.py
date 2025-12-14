@@ -8,7 +8,7 @@ Step 3: Anordnung
 Step 4: PDF-Optionen
 Step 5: Generierung
 
-v1.0.9 - Bugfix: Initialisierungsreihenfolge
+v1.0.10 - Bugfix: Schuljahr-Format "25/26" statt "2025/2026"
 """
 
 from PyQt6.QtWidgets import (
@@ -349,6 +349,7 @@ class Step1Setup(QWidget):
         schule_layout = QFormLayout(schule_group)
         
         self.schule_combo = QComboBox()
+        self.schule_combo.currentIndexChanged.connect(self.on_schule_changed)
         self.load_schulen()
         schule_layout.addRow("Schule:", self.schule_combo)
         
@@ -396,7 +397,8 @@ class Step1Setup(QWidget):
         
         # Schuljahr
         self.schuljahr_combo = QComboBox()
-        self.populate_schuljahre()  # JETZT ohne Update-Aufruf!
+        self.schuljahr_combo.currentIndexChanged.connect(self.on_schuljahr_changed)
+        self.populate_schuljahre()
         klasse_layout.addRow("Schuljahr:", self.schuljahr_combo)
         
         layout.addWidget(klasse_group)
@@ -479,11 +481,15 @@ class Step1Setup(QWidget):
         main_layout.addWidget(scroll)
         
         # JETZT ERST am Ende: Klassen + Schuljahr initialisieren
-        self.load_klassen()
         self.update_schuljahr_from_datum()  # JETZT sicher, da datum_edit existiert!
+        self.load_klassen()
         
     def populate_schuljahre(self):
-        """Schuljahre für Dropdown generieren"""
+        """
+        Schuljahre für Dropdown generieren
+        
+        FORMAT: "25/26" (nicht "2025/2026"!)
+        """
         current_year = QDate.currentDate().year()
         
         self.schuljahr_combo.clear()
@@ -491,11 +497,9 @@ class Step1Setup(QWidget):
         # Generiere 3 Jahre zurück und 2 Jahre voraus
         for offset in range(-3, 3):
             year = current_year + offset
-            schuljahr = f"{year}/{year+1}"
+            # Format: "25/26" statt "2025/2026"
+            schuljahr = f"{year % 100:02d}/{(year + 1) % 100:02d}"
             self.schuljahr_combo.addItem(schuljahr)
-        
-        # NICHT mehr hier update_schuljahr_from_datum() aufrufen!
-        # Das passiert am Ende von setup_ui()
     
     def on_datum_changed(self):
         """
@@ -505,6 +509,14 @@ class Step1Setup(QWidget):
         """
         self.update_schuljahr_from_datum()
     
+    def on_schule_changed(self):
+        """Wird aufgerufen wenn Schule geändert wird"""
+        self.load_klassen()
+    
+    def on_schuljahr_changed(self):
+        """Wird aufgerufen wenn Schuljahr geändert wird"""
+        self.load_klassen()
+    
     def update_schuljahr_from_datum(self):
         """
         Berechne Schuljahr aus Datum
@@ -512,15 +524,17 @@ class Step1Setup(QWidget):
         Logik: 
         - August bis Dezember → Jahr/Jahr+1
         - Januar bis Juli → Jahr-1/Jahr
+        
+        FORMAT: "25/26" (nicht "2025/2026"!)
         """
         datum = self.datum_edit.date()
         year = datum.year()
         month = datum.month()
         
         if month >= 8:  # August - Dezember
-            schuljahr = f"{year}/{year+1}"
+            schuljahr = f"{year % 100:02d}/{(year + 1) % 100:02d}"
         else:  # Januar - Juli
-            schuljahr = f"{year-1}/{year}"
+            schuljahr = f"{(year - 1) % 100:02d}/{year % 100:02d}"
         
         # Setze im Dropdown
         index = self.schuljahr_combo.findText(schuljahr)
@@ -552,30 +566,59 @@ class Step1Setup(QWidget):
         self.load_klassen()
     
     def load_klassen(self):
-        """Klassen laden basierend auf Schule und Jahrgangsstufe"""
+        """
+        Klassen laden basierend auf Schule, Schuljahr und Jahrgangsstufe
+        
+        WICHTIG: Nutzt DB-Abfrage mit korrektem Schuljahr-Format!
+        """
         try:
             schule_kuerzel = self.schule_combo.currentData()
             schuljahr = self.schuljahr_combo.currentText()
+            jahrgangsstufe = self.jahrgangsstufe_spin.value()
+            
+            print(f"DEBUG load_klassen: schule={schule_kuerzel}, schuljahr={schuljahr}, stufe={jahrgangsstufe}")
             
             if schule_kuerzel and schuljahr:
-                klassen = self.db.get_klassen_by_schule(schuljahr, schule_kuerzel)
+                # Alle Klassen der Schule für dieses Schuljahr
+                alle_klassen = self.db.get_klassen_by_schule(schuljahr, schule_kuerzel)
+                print(f"DEBUG alle_klassen aus DB: {alle_klassen}")
+                
+                # Filtere nach Jahrgangsstufe
+                klassen = [k for k in alle_klassen if k.startswith(str(jahrgangsstufe))]
+                print(f"DEBUG gefiltert nach Stufe {jahrgangsstufe}: {klassen}")
                 
                 self.klasse_combo.clear()
-                self.klasse_combo.addItems(klassen)
+                
+                if klassen:
+                    self.klasse_combo.addItems(klassen)
+                else:
+                    # Fallback: Generiere Standard-Klassen
+                    print(f"DEBUG: Keine Klassen gefunden, nutze Fallback")
+                    self.klasse_combo.addItems([
+                        f"{jahrgangsstufe}a", 
+                        f"{jahrgangsstufe}b", 
+                        f"{jahrgangsstufe}c"
+                    ])
                 
         except Exception as e:
             print(f"Fehler beim Laden der Klassen: {e}")
+            import traceback
+            traceback.print_exc()
+            
             # Fallback: Generiere Klassen basierend auf Jahrgangsstufe
             jahrgangsstufe = self.jahrgangsstufe_spin.value()
             self.klasse_combo.clear()
-            self.klasse_combo.addItems([f"{jahrgangsstufe}a", f"{jahrgangsstufe}b", f"{jahrgangsstufe}c"])
+            self.klasse_combo.addItems([
+                f"{jahrgangsstufe}a", 
+                f"{jahrgangsstufe}b", 
+                f"{jahrgangsstufe}c"
+            ])
     
     def load_from_klausur(self, klausur_data):
         """
         UI mit Klausur-Daten füllen
         
         NEU! Für Edit-Modus
-        v1.0.8: Bugfix - Schuljahr aus Datum berechnen, Klasse richtig setzen
         """
         # Schule
         schule_kuerzel = klausur_data.get('schule', 'gyd')
