@@ -2,12 +2,13 @@
 Hauptfenster mit Tab-Struktur
 ==============================
 
-5 Haupttabs:
+6 Haupttabs:
 1. Dashboard
-2. Klausur (5-Step-Wizard)
-3. Aufgaben
-4. Grafiken
-5. Einstellungen
+2. Klausur erstellen (5-Step-Wizard)
+3. Klausuren verwalten (NEU!)
+4. Aufgaben
+5. Grafiken
+6. Einstellungen
 """
 
 from PyQt6.QtWidgets import (
@@ -19,6 +20,7 @@ from PyQt6.QtGui import QAction, QIcon
 
 from gui.tabs.dashboard_tab import DashboardTab
 from gui.tabs.klausur_tab import KlausurTab
+from gui.tabs.klausuren_verwaltung_tab import KlausurenVerwaltungTab
 from gui.tabs.aufgaben_tab import AufgabenTab
 from gui.tabs.grafiken_tab import GrafikenTab
 from gui.tabs.einstellungen_tab import EinstellungenTab
@@ -61,12 +63,14 @@ class MainWindow(QMainWindow):
         # Tabs hinzufügen
         self.dashboard_tab = DashboardTab(self)
         self.klausur_tab = KlausurTab(self)
+        self.klausuren_verwaltung_tab = KlausurenVerwaltungTab(self)
         self.aufgaben_tab = AufgabenTab(self)
         self.grafiken_tab = GrafikenTab(self)
         self.einstellungen_tab = EinstellungenTab(self)
         
         self.tabs.addTab(self.dashboard_tab, "📊 Dashboard")
         self.tabs.addTab(self.klausur_tab, "📝 Klausur erstellen")
+        self.tabs.addTab(self.klausuren_verwaltung_tab, "📋 Klausuren verwalten")
         self.tabs.addTab(self.aufgaben_tab, "📚 Aufgaben")
         self.tabs.addTab(self.grafiken_tab, "🖼️  Grafiken")
         self.tabs.addTab(self.einstellungen_tab, "⚙️  Einstellungen")
@@ -132,6 +136,7 @@ class MainWindow(QMainWindow):
         tab_names = [
             "Dashboard",
             "Klausur erstellen",
+            "Klausuren verwalten",
             "Aufgaben verwalten",
             "Grafiken verwalten",
             "Einstellungen"
@@ -147,7 +152,7 @@ class MainWindow(QMainWindow):
         
     def neue_aufgabe(self):
         """Neue Aufgabe erstellen - Wechselt zu Aufgaben-Tab"""
-        self.tabs.setCurrentIndex(2)  # Aufgaben-Tab
+        self.tabs.setCurrentIndex(3)  # Aufgaben-Tab (jetzt Index 3!)
         self.aufgaben_tab.neue_aufgabe()
         
     def show_about(self):
