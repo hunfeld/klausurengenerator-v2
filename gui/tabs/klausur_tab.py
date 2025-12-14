@@ -8,13 +8,15 @@ Step 3: Anordnung
 Step 4: PDF-Optionen
 Step 5: Generierung
 
-v1.0.12 - Bugfix: Signal-Connections ans Ende verschoben
+v2.0.0 - Step 2 komplett implementiert!
 """
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QStackedWidget, 
     QFrame, QGroupBox, QComboBox, QRadioButton, QButtonGroup, QSpinBox,
-    QLineEdit, QDateEdit, QMessageBox, QFormLayout, QScrollArea
+    QLineEdit, QDateEdit, QMessageBox, QFormLayout, QScrollArea, QSplitter,
+    QTableWidget, QTableWidgetItem, QTextEdit, QHeaderView, QListWidget,
+    QListWidgetItem
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
@@ -349,7 +351,6 @@ class Step1Setup(QWidget):
         schule_layout = QFormLayout(schule_group)
         
         self.schule_combo = QComboBox()
-        # Signal NOCH NICHT verbinden!
         schule_layout.addRow("Schule:", self.schule_combo)
         
         layout.addWidget(schule_group)
@@ -386,17 +387,15 @@ class Step1Setup(QWidget):
         self.jahrgangsstufe_spin = QSpinBox()
         self.jahrgangsstufe_spin.setRange(5, 13)
         self.jahrgangsstufe_spin.setValue(8)
-        # Signal NOCH NICHT verbinden!
         klasse_layout.addRow("Jahrgangsstufe:", self.jahrgangsstufe_spin)
         
         # Klasse (editable ComboBox!)
         self.klasse_combo = QComboBox()
-        self.klasse_combo.setEditable(True)  # WICHTIG: User kann auch eigene eingeben!
+        self.klasse_combo.setEditable(True)
         klasse_layout.addRow("Klasse:", self.klasse_combo)
         
         # Schuljahr
         self.schuljahr_combo = QComboBox()
-        # Signal NOCH NICHT verbinden!
         klasse_layout.addRow("Schuljahr:", self.schuljahr_combo)
         
         layout.addWidget(klasse_group)
@@ -437,7 +436,6 @@ class Step1Setup(QWidget):
         self.datum_edit.setCalendarPopup(True)
         self.datum_edit.setDate(QDate.currentDate())
         self.datum_edit.setDisplayFormat("dd.MM.yyyy")
-        # Signal NOCH NICHT verbinden!
         termin_layout.addRow("Datum:", self.datum_edit)
         
         # Bearbeitungszeit
@@ -451,7 +449,7 @@ class Step1Setup(QWidget):
             self.zeit_buttons.addButton(radio, i)
             zeit_hlayout.addWidget(radio)
             
-            if i == 0:  # 45 Min als Default
+            if i == 0:
                 radio.setChecked(True)
         
         termin_layout.addRow("Bearbeitungszeit:", zeit_hlayout)
@@ -472,85 +470,59 @@ class Step1Setup(QWidget):
         
         scroll.setWidget(content)
         
-        # Main Layout
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(scroll)
         
-        # ============================================================
-        # JETZT ERST: Initial-Daten laden (OHNE Signal-Triggering!)
-        # ============================================================
+        # Initial-Daten laden
         self.load_schulen()
         self.populate_schuljahre()
         self.update_schuljahr_from_datum()
         self.load_klassen()
         
-        # ============================================================
-        # GANZ AM ENDE: Signals verbinden!
-        # ============================================================
+        # Signals verbinden (GANZ AM ENDE!)
         self.schule_combo.currentIndexChanged.connect(self.on_schule_changed)
         self.schuljahr_combo.currentIndexChanged.connect(self.on_schuljahr_changed)
         self.jahrgangsstufe_spin.valueChanged.connect(self.on_jahrgangsstufe_changed)
         self.datum_edit.dateChanged.connect(self.on_datum_changed)
         
     def populate_schuljahre(self):
-        """
-        Schuljahre für Dropdown generieren
-        
-        FORMAT: "25/26" (nicht "2025/2026"!)
-        """
+        """Schuljahre generieren (Format: 25/26)"""
         current_year = QDate.currentDate().year()
-        
         self.schuljahr_combo.clear()
         
-        # Generiere 3 Jahre zurück und 2 Jahre voraus
         for offset in range(-3, 3):
             year = current_year + offset
-            # Format: "25/26" statt "2025/2026"
             schuljahr = f"{year % 100:02d}/{(year + 1) % 100:02d}"
             self.schuljahr_combo.addItem(schuljahr)
     
     def on_datum_changed(self):
-        """
-        Wird aufgerufen wenn Datum geändert wird
-        
-        NEU: Berechnet Schuljahr automatisch
-        """
+        """Datum geändert → Schuljahr berechnen"""
         self.update_schuljahr_from_datum()
     
     def on_schule_changed(self):
-        """Wird aufgerufen wenn Schule geändert wird"""
+        """Schule geändert → Klassen neu laden"""
         self.load_klassen()
     
     def on_schuljahr_changed(self):
-        """Wird aufgerufen wenn Schuljahr geändert wird"""
+        """Schuljahr geändert → Klassen neu laden"""
         self.load_klassen()
     
     def update_schuljahr_from_datum(self):
-        """
-        Berechne Schuljahr aus Datum
-        
-        Logik: 
-        - August bis Dezember → Jahr/Jahr+1
-        - Januar bis Juli → Jahr-1/Jahr
-        
-        FORMAT: "25/26" (nicht "2025/2026"!)
-        """
+        """Berechne Schuljahr aus Datum (Format: 25/26)"""
         datum = self.datum_edit.date()
         year = datum.year()
         month = datum.month()
         
-        if month >= 8:  # August - Dezember
+        if month >= 8:
             schuljahr = f"{year % 100:02d}/{(year + 1) % 100:02d}"
-        else:  # Januar - Juli
+        else:
             schuljahr = f"{(year - 1) % 100:02d}/{year % 100:02d}"
         
-        # Setze im Dropdown
         index = self.schuljahr_combo.findText(schuljahr)
         if index >= 0:
             self.schuljahr_combo.setCurrentIndex(index)
         else:
-            # Falls nicht in Liste, hinzufügen
             self.schuljahr_combo.addItem(schuljahr)
             self.schuljahr_combo.setCurrentText(schuljahr)
         
@@ -562,74 +534,46 @@ class Step1Setup(QWidget):
             
             for schule in schulen:
                 self.schule_combo.addItem(schule['name'], schule['kuerzel'])
-                
         except Exception as e:
             print(f"Fehler beim Laden der Schulen: {e}")
-            # Fallback
             self.schule_combo.addItem("Gymnasium Dörpen", "gyd")
             self.schule_combo.addItem("Gymnasium Papenburg", "gympap")
             self.schule_combo.addItem("Oberschule", "obs")
     
     def on_jahrgangsstufe_changed(self):
-        """Wird aufgerufen wenn Jahrgangsstufe geändert wird"""
+        """Jahrgangsstufe geändert → Klassen neu laden"""
         self.load_klassen()
     
     def load_klassen(self):
-        """
-        Klassen laden basierend auf Schule, Schuljahr und Jahrgangsstufe
-        
-        WICHTIG: Nutzt DB-Abfrage mit korrektem Schuljahr-Format!
-        """
+        """Klassen laden und nach Jahrgangsstufe filtern"""
         try:
             schule_kuerzel = self.schule_combo.currentData()
             schuljahr = self.schuljahr_combo.currentText()
             jahrgangsstufe = self.jahrgangsstufe_spin.value()
             
-            print(f"DEBUG load_klassen: schule={schule_kuerzel}, schuljahr={schuljahr}, stufe={jahrgangsstufe}")
-            
             if schule_kuerzel and schuljahr:
-                # Alle Klassen der Schule für dieses Schuljahr
                 alle_klassen = self.db.get_klassen_by_schule(schuljahr, schule_kuerzel)
-                print(f"DEBUG alle_klassen aus DB: {alle_klassen}")
-                
-                # Filtere nach Jahrgangsstufe
                 klassen = [k for k in alle_klassen if k.startswith(str(jahrgangsstufe))]
-                print(f"DEBUG gefiltert nach Stufe {jahrgangsstufe}: {klassen}")
                 
                 self.klasse_combo.clear()
                 
                 if klassen:
                     self.klasse_combo.addItems(klassen)
                 else:
-                    # Fallback: Generiere Standard-Klassen
-                    print(f"DEBUG: Keine Klassen gefunden, nutze Fallback")
                     self.klasse_combo.addItems([
                         f"{jahrgangsstufe}a", 
                         f"{jahrgangsstufe}b", 
                         f"{jahrgangsstufe}c"
                     ])
-                
         except Exception as e:
             print(f"Fehler beim Laden der Klassen: {e}")
-            import traceback
-            traceback.print_exc()
-            
-            # Fallback: Generiere Klassen basierend auf Jahrgangsstufe
             jahrgangsstufe = self.jahrgangsstufe_spin.value()
             self.klasse_combo.clear()
-            self.klasse_combo.addItems([
-                f"{jahrgangsstufe}a", 
-                f"{jahrgangsstufe}b", 
-                f"{jahrgangsstufe}c"
-            ])
+            self.klasse_combo.addItems([f"{jahrgangsstufe}a", f"{jahrgangsstufe}b", f"{jahrgangsstufe}c"])
     
     def load_from_klausur(self, klausur_data):
-        """
-        UI mit Klausur-Daten füllen
-        
-        NEU! Für Edit-Modus
-        """
-        # Signals blocken während Laden
+        """UI mit Klausur-Daten füllen (Edit-Modus)"""
+        # Signals blocken
         self.schule_combo.blockSignals(True)
         self.schuljahr_combo.blockSignals(True)
         self.jahrgangsstufe_spin.blockSignals(True)
@@ -648,11 +592,11 @@ class Step1Setup(QWidget):
                 button.setChecked(True)
                 break
         
-        # Jahrgangsstufe ZUERST setzen
+        # Jahrgangsstufe
         jahrgangsstufe = klausur_data.get('jahrgangsstufe', 8)
         self.jahrgangsstufe_spin.setValue(jahrgangsstufe)
         
-        # Datum DANN setzen
+        # Datum
         datum_str = klausur_data.get('datum', '')
         if datum_str:
             try:
@@ -661,21 +605,16 @@ class Step1Setup(QWidget):
             except:
                 pass
         
-        # Schuljahr berechnen
         self.update_schuljahr_from_datum()
-        
-        # Klassen laden
         self.load_klassen()
         
-        # Klasse setzen (NACH load_klassen!)
+        # Klasse
         klasse = klausur_data.get('klasse', '')
         if klasse:
-            # Prüfe ob in Dropdown
             index = self.klasse_combo.findText(klasse)
             if index >= 0:
                 self.klasse_combo.setCurrentIndex(index)
             else:
-                # Nicht in Dropdown → manuell setzen (editable!)
                 self.klasse_combo.setCurrentText(klasse)
         
         # Typ
@@ -696,7 +635,7 @@ class Step1Setup(QWidget):
         titel = klausur_data.get('titel', '')
         self.thema_edit.setText(titel)
         
-        # Signals wieder freigeben
+        # Signals freigeben
         self.schule_combo.blockSignals(False)
         self.schuljahr_combo.blockSignals(False)
         self.jahrgangsstufe_spin.blockSignals(False)
@@ -704,8 +643,6 @@ class Step1Setup(QWidget):
     
     def validate(self):
         """Validierung"""
-        
-        # Thema darf nicht leer sein
         if not self.thema_edit.text().strip():
             QMessageBox.warning(
                 self,
@@ -714,38 +651,31 @@ class Step1Setup(QWidget):
             )
             self.thema_edit.setFocus()
             return False
-        
         return True
         
     def save_data(self):
         """Daten in Klausur-Objekt speichern"""
         klausur = self.parent_tab.klausur
         
-        # Schule
         klausur.schule_kuerzel = self.schule_combo.currentData()
         
-        # Fach
         fach_button = self.fach_buttons.checkedButton()
         klausur.fach = fach_button.text()
         klausur.fach_kuerzel = fach_button.property("kuerzel")
         
-        # Klasse
         klausur.jahrgangsstufe = self.jahrgangsstufe_spin.value()
-        klausur.klasse = self.klasse_combo.currentText()  # Kann auch manuell eingegeben sein!
+        klausur.klasse = self.klasse_combo.currentText()
         klausur.schuljahr = self.schuljahr_combo.currentText()
         
-        # Typ
         typ_button = self.typ_buttons.checkedButton()
         klausur.typ = typ_button.text()
         klausur.nummer = self.nummer_spin.value()
         
-        # Termin
         klausur.datum = self.datum_edit.date().toString("dd.MM.yyyy")
         
         zeit_button = self.zeit_buttons.checkedButton()
         klausur.zeit_minuten = zeit_button.property("minuten")
         
-        # Thema
         klausur.thema = self.thema_edit.text().strip()
         
         print(f"Step 1 gespeichert: {klausur.fach} {klausur.klasse} - {klausur.thema}")
@@ -757,30 +687,35 @@ class Step1Setup(QWidget):
         self.nummer_spin.setValue(1)
         self.datum_edit.setDate(QDate.currentDate())
         
-        # Defaults
         self.fach_buttons.button(0).setChecked(True)
         self.typ_buttons.button(0).setChecked(True)
         self.zeit_buttons.button(0).setChecked(True)
 
 
 # ============================================================
-# STEP 2: AUFGABEN AUSWÄHLEN (Platzhalter)
+# STEP 2: AUFGABEN AUSWÄHLEN
 # ============================================================
 
 class Step2AufgabenAuswahl(QWidget):
-    """Step 2: Aufgaben aus Pool auswählen"""
+    """Step 2: Aufgaben aus Pool auswählen - KOMPLETT IMPLEMENTIERT!"""
     
     def __init__(self, parent_tab):
         super().__init__()
         self.parent_tab = parent_tab
+        self.db = get_database()
+        
+        # Ausgewählte Aufgaben (Liste von IDs)
+        self.selected_aufgaben_ids = []
+        
         self.setup_ui()
         
     def setup_ui(self):
         """UI aufbauen"""
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 20, 40, 20)
+        layout.setContentsMargins(20, 10, 20, 10)
         
+        # Titel
         title = QLabel("Schritt 2/5: Aufgaben auswählen")
         title_font = QFont()
         title_font.setPointSize(16)
@@ -788,33 +723,301 @@ class Step2AufgabenAuswahl(QWidget):
         title.setFont(title_font)
         layout.addWidget(title)
         
-        layout.addSpacing(20)
+        # Haupt-Split: Oben (Aufgaben-Pool) / Unten (Ausgewählte)
+        main_split = QSplitter(Qt.Orientation.Vertical)
         
-        # TODO: Master-Detail-View
-        placeholder = QLabel("🚧 Wird als nächstes implementiert...")
-        placeholder.setStyleSheet("color: #666; font-size: 14pt; font-style: italic;")
-        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(placeholder)
+        # ========== OBEN: Aufgaben-Pool ==========
+        pool_widget = QWidget()
+        pool_layout = QVBoxLayout(pool_widget)
+        pool_layout.setContentsMargins(0, 0, 0, 0)
         
-        layout.addStretch()
+        # Label
+        pool_label = QLabel("📚 Aufgaben-Pool")
+        pool_label.setStyleSheet("font-weight: bold; font-size: 12pt;")
+        pool_layout.addWidget(pool_label)
+        
+        # Filter-Leiste
+        filter_widget = QWidget()
+        filter_layout = QHBoxLayout(filter_widget)
+        filter_layout.setContentsMargins(0, 5, 0, 5)
+        
+        # Suchfeld
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("🔍 Suche nach Titel/Thema...")
+        self.search_edit.textChanged.connect(self.load_aufgaben)
+        filter_layout.addWidget(self.search_edit, 2)
+        
+        # Schwierigkeit
+        filter_layout.addWidget(QLabel("Schwierigkeit:"))
+        self.schwierigkeit_combo = QComboBox()
+        self.schwierigkeit_combo.addItems(["Alle", "leicht", "mittel", "schwer"])
+        self.schwierigkeit_combo.currentTextChanged.connect(self.load_aufgaben)
+        filter_layout.addWidget(self.schwierigkeit_combo, 1)
+        
+        # Anforderungsbereich
+        filter_layout.addWidget(QLabel("AFB:"))
+        self.afb_combo = QComboBox()
+        self.afb_combo.addItems(["Alle", "I", "II", "III"])
+        self.afb_combo.currentTextChanged.connect(self.load_aufgaben)
+        filter_layout.addWidget(self.afb_combo, 1)
+        
+        pool_layout.addWidget(filter_widget)
+        
+        # Split: Links (Tabelle) / Rechts (Detail)
+        pool_split = QSplitter(Qt.Orientation.Horizontal)
+        
+        # Links: Tabelle
+        self.aufgaben_table = QTableWidget()
+        self.aufgaben_table.setColumnCount(6)
+        self.aufgaben_table.setHorizontalHeaderLabels([
+            "ID", "Titel", "Thema", "Schwierigkeit", "AFB", "Punkte"
+        ])
+        self.aufgaben_table.horizontalHeader().setStretchLastSection(False)
+        self.aufgaben_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.aufgaben_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.aufgaben_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.aufgaben_table.itemSelectionChanged.connect(self.on_aufgabe_selected)
+        self.aufgaben_table.doubleClicked.connect(self.add_aufgabe)
+        pool_split.addWidget(self.aufgaben_table)
+        
+        # Rechts: Detail + Button
+        detail_widget = QWidget()
+        detail_layout = QVBoxLayout(detail_widget)
+        detail_layout.setContentsMargins(0, 0, 0, 0)
+        
+        detail_label = QLabel("📋 Detail-Ansicht")
+        detail_label.setStyleSheet("font-weight: bold;")
+        detail_layout.addWidget(detail_label)
+        
+        self.detail_text = QTextEdit()
+        self.detail_text.setReadOnly(True)
+        detail_layout.addWidget(self.detail_text)
+        
+        self.add_btn = QPushButton("➕ Hinzufügen")
+        self.add_btn.setEnabled(False)
+        self.add_btn.clicked.connect(self.add_aufgabe)
+        detail_layout.addWidget(self.add_btn)
+        
+        pool_split.addWidget(detail_widget)
+        pool_split.setSizes([600, 300])
+        
+        pool_layout.addWidget(pool_split)
+        main_split.addWidget(pool_widget)
+        
+        # ========== UNTEN: Ausgewählte Aufgaben ==========
+        selected_widget = QWidget()
+        selected_layout = QVBoxLayout(selected_widget)
+        selected_layout.setContentsMargins(0, 0, 0, 0)
+        
+        selected_label = QLabel("✅ Ausgewählte Aufgaben")
+        selected_label.setStyleSheet("font-weight: bold; font-size: 12pt;")
+        selected_layout.addWidget(selected_label)
+        
+        self.selected_list = QListWidget()
+        selected_layout.addWidget(self.selected_list)
+        
+        # Buttons
+        selected_buttons = QHBoxLayout()
+        
+        self.remove_btn = QPushButton("❌ Entfernen")
+        self.remove_btn.setEnabled(False)
+        self.remove_btn.clicked.connect(self.remove_aufgabe)
+        selected_buttons.addWidget(self.remove_btn)
+        
+        self.clear_btn = QPushButton("🗑️ Alle entfernen")
+        self.clear_btn.clicked.connect(self.clear_aufgaben)
+        selected_buttons.addWidget(self.clear_btn)
+        
+        selected_buttons.addStretch()
+        
+        self.count_label = QLabel("0 Aufgaben ausgewählt")
+        selected_buttons.addWidget(self.count_label)
+        
+        selected_layout.addLayout(selected_buttons)
+        
+        main_split.addWidget(selected_widget)
+        main_split.setSizes([400, 200])
+        
+        layout.addWidget(main_split)
+        
+        # Signal für selected_list
+        self.selected_list.itemSelectionChanged.connect(self.on_selected_item_changed)
     
     def on_enter(self):
-        """Wird aufgerufen wenn dieser Step betreten wird"""
+        """Wird aufgerufen wenn Step 2 betreten wird"""
         klausur = self.parent_tab.klausur
         print(f"Step 2: Laden Aufgaben für {klausur.fach}, Stufe {klausur.jahrgangsstufe}")
+        self.load_aufgaben()
+    
+    def load_aufgaben(self):
+        """Aufgaben aus DB laden mit Filtern"""
+        klausur = self.parent_tab.klausur
+        
+        # Filter aus UI
+        suchtext = self.search_edit.text().strip()
+        schwierigkeit = self.schwierigkeit_combo.currentText()
+        afb = self.afb_combo.currentText()
+        
+        # DB-Abfrage
+        aufgaben = self.db.get_aufgaben(
+            fach=klausur.fach,
+            jahrgangsstufe=klausur.jahrgangsstufe,
+            schwierigkeit=None if schwierigkeit == "Alle" else schwierigkeit,
+            anforderungsbereich=None if afb == "Alle" else afb,
+            suchtext=suchtext if suchtext else None
+        )
+        
+        # Tabelle füllen
+        self.aufgaben_table.setRowCount(0)
+        
+        for aufgabe in aufgaben:
+            row = self.aufgaben_table.rowCount()
+            self.aufgaben_table.insertRow(row)
+            
+            self.aufgaben_table.setItem(row, 0, QTableWidgetItem(str(aufgabe['id'])))
+            self.aufgaben_table.setItem(row, 1, QTableWidgetItem(aufgabe['titel'] or ''))
+            self.aufgaben_table.setItem(row, 2, QTableWidgetItem(aufgabe['themengebiet'] or ''))
+            self.aufgaben_table.setItem(row, 3, QTableWidgetItem(aufgabe['schwierigkeit'] or ''))
+            self.aufgaben_table.setItem(row, 4, QTableWidgetItem(aufgabe['anforderungsbereich'] or ''))
+            self.aufgaben_table.setItem(row, 5, QTableWidgetItem(str(aufgabe['punkte'] or 0)))
+            
+            # Speichere komplette Aufgabe als UserRole
+            self.aufgaben_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, aufgabe)
+    
+    def on_aufgabe_selected(self):
+        """Aufgabe in Tabelle ausgewählt"""
+        selected_rows = self.aufgaben_table.selectedItems()
+        
+        if not selected_rows:
+            self.detail_text.clear()
+            self.add_btn.setEnabled(False)
+            return
+        
+        # Erste Zelle der Zeile
+        row = selected_rows[0].row()
+        aufgabe = self.aufgaben_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        
+        # Detail anzeigen
+        detail_html = f"""
+        <h3>{aufgabe['titel']}</h3>
+        <p><b>ID:</b> {aufgabe['id']}</p>
+        <p><b>Themengebiet:</b> {aufgabe['themengebiet'] or '-'}</p>
+        <p><b>Schwierigkeit:</b> {aufgabe['schwierigkeit'] or '-'}</p>
+        <p><b>Anforderungsbereich:</b> {aufgabe['anforderungsbereich'] or '-'}</p>
+        <p><b>Punkte:</b> {aufgabe['punkte'] or 0}</p>
+        <p><b>Platzbedarf:</b> {aufgabe['platzbedarf_min'] or 0.0} cm</p>
+        <p><b>Schlagwörter:</b> {aufgabe['schlagwoerter'] or '-'}</p>
+        """
+        
+        self.detail_text.setHtml(detail_html)
+        self.add_btn.setEnabled(True)
+    
+    def add_aufgabe(self):
+        """Aufgabe zur Auswahl hinzufügen"""
+        selected_rows = self.aufgaben_table.selectedItems()
+        
+        if not selected_rows:
+            return
+        
+        row = selected_rows[0].row()
+        aufgabe = self.aufgaben_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        aufgabe_id = aufgabe['id']
+        
+        # Prüfe ob schon ausgewählt
+        if aufgabe_id in self.selected_aufgaben_ids:
+            QMessageBox.information(self, "Info", "Diese Aufgabe wurde bereits hinzugefügt.")
+            return
+        
+        # Hinzufügen
+        self.selected_aufgaben_ids.append(aufgabe_id)
+        
+        # In Liste anzeigen
+        item = QListWidgetItem(f"#{len(self.selected_aufgaben_ids)}: {aufgabe['titel']} ({aufgabe['punkte']} P)")
+        item.setData(Qt.ItemDataRole.UserRole, aufgabe)
+        self.selected_list.addItem(item)
+        
+        # Update Count
+        self.update_count()
+    
+    def on_selected_item_changed(self):
+        """Item in selected_list ausgewählt"""
+        self.remove_btn.setEnabled(len(self.selected_list.selectedItems()) > 0)
+    
+    def remove_aufgabe(self):
+        """Aufgabe aus Auswahl entfernen"""
+        selected_items = self.selected_list.selectedItems()
+        
+        if not selected_items:
+            return
+        
+        for item in selected_items:
+            aufgabe = item.data(Qt.ItemDataRole.UserRole)
+            self.selected_aufgaben_ids.remove(aufgabe['id'])
+            self.selected_list.takeItem(self.selected_list.row(item))
+        
+        # Nummerierung aktualisieren
+        self.renumber_selected()
+        self.update_count()
+    
+    def clear_aufgaben(self):
+        """Alle Aufgaben entfernen"""
+        if not self.selected_aufgaben_ids:
+            return
+        
+        reply = QMessageBox.question(
+            self,
+            "Bestätigung",
+            "Wirklich alle Aufgaben entfernen?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.selected_aufgaben_ids.clear()
+            self.selected_list.clear()
+            self.update_count()
+    
+    def renumber_selected(self):
+        """Nummerierung der selected_list aktualisieren"""
+        for i in range(self.selected_list.count()):
+            item = self.selected_list.item(i)
+            aufgabe = item.data(Qt.ItemDataRole.UserRole)
+            item.setText(f"#{i+1}: {aufgabe['titel']} ({aufgabe['punkte']} P)")
+    
+    def update_count(self):
+        """Anzahl ausgewählter Aufgaben aktualisieren"""
+        count = len(self.selected_aufgaben_ids)
+        total_punkte = sum([
+            self.selected_list.item(i).data(Qt.ItemDataRole.UserRole)['punkte'] or 0
+            for i in range(self.selected_list.count())
+        ])
+        
+        self.count_label.setText(f"{count} Aufgaben ausgewählt ({total_punkte} Punkte)")
         
     def validate(self):
         """Validierung"""
-        # TODO: Mindestens 1 Aufgabe?
+        if not self.selected_aufgaben_ids:
+            QMessageBox.warning(
+                self,
+                "Fehlende Aufgaben",
+                "Bitte wählen Sie mindestens eine Aufgabe aus."
+            )
+            return False
         return True
         
     def save_data(self):
         """Daten speichern"""
-        pass
+        # Speichere IDs im Klausur-Objekt
+        self.parent_tab.klausur.aufgaben_ids = self.selected_aufgaben_ids.copy()
+        print(f"Step 2 gespeichert: {len(self.selected_aufgaben_ids)} Aufgaben ausgewählt")
         
     def reset(self):
         """Zurücksetzen"""
-        pass
+        self.selected_aufgaben_ids.clear()
+        self.selected_list.clear()
+        self.search_edit.clear()
+        self.schwierigkeit_combo.setCurrentIndex(0)
+        self.afb_combo.setCurrentIndex(0)
+        self.update_count()
 
 
 # ============================================================
