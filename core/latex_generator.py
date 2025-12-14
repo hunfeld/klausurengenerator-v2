@@ -3,10 +3,10 @@ LaTeX-Generator
 ===============
 
 Generiert LaTeX-Code aus Klausur-Objekten
-Portiert und erweitert aus klassensatz_generator_v1.8.py
+Mit Logo aus DB und KasusID aus DB
 """
 
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from core.models import Klausur, KlausurAufgabe, Schueler
 from utils.latex_helper import (
     escape_latex, 
@@ -16,14 +16,62 @@ from utils.latex_helper import (
     cm_to_pt
 )
 import base64
+import os
+import tempfile
 from io import BytesIO
 
 
 class LaTeXGenerator:
     """Generiert LaTeX-Code für Klausuren"""
     
-    def __init__(self, klausur: Klausur):
+    def __init__(self, klausur: Klausur, logo_blob: bytes = None, kasusid: int = None):
+        """
+        Args:
+            klausur: Klausur-Objekt
+            logo_blob: Optional - Logo als BLOB (aus schulen.logo)
+            kasusid: Optional - KasusID (aus kasusid_counter)
+        """
         self.klausur = klausur
+        self.logo_blob = logo_blob
+        self.kasusid = kasusid or 100001  # Fallback
+        self.logo_path = None
+        
+        # Logo als temporäre Datei speichern (falls vorhanden)
+        if logo_blob:
+            self.logo_path = self._save_logo_to_temp(logo_blob)
+    
+    def _save_logo_to_temp(self, logo_blob: bytes) -> str:
+        """
+        Speichert Logo-BLOB als temporäre Datei
+        
+        Args:
+            logo_blob: Logo als Bytes
+            
+        Returns:
+            Pfad zur temporären Datei
+        """
+        try:
+            # Temporäre Datei erstellen
+            temp_dir = tempfile.gettempdir()
+            logo_path = os.path.join(temp_dir, "klausur_logo.png")
+            
+            # BLOB speichern
+            with open(logo_path, 'wb') as f:
+                f.write(logo_blob)
+            
+            return logo_path
+            
+        except Exception as e:
+            print(f"Fehler beim Speichern des Logos: {e}")
+            return None
+    
+    def cleanup(self):
+        """Temporäre Dateien aufräumen"""
+        if self.logo_path and os.path.exists(self.logo_path):
+            try:
+                os.remove(self.logo_path)
+            except:
+                pass
         
     def generate_complete_latex(self) -> str:
         """
@@ -116,7 +164,7 @@ class LaTeXGenerator:
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\footrulewidth}{0.4pt}
 
-% QR-Codes (falls benötigt)
+% QR-Codes
 \usepackage{qrcode}
 
 % Aufzählungen
@@ -167,9 +215,9 @@ class LaTeXGenerator:
         
         parts = []
         
-        # QR-Code-Daten generieren
+        # QR-Code-Daten generieren (mit KasusID aus DB!)
         qr_data = generate_qr_code_data(
-            kasusid=100001,  # TODO: Aus DB holen
+            kasusid=self.kasusid,
             schueler_id=schueler.schueler_id
         )
         
@@ -205,8 +253,7 @@ class LaTeXGenerator:
         """
         Generiert Header für erste Seite
         
-        Auf Seite 1: Voller Header mit Logo und QR-Code
-        Ab Seite 2: Nur laufende Kopfzeile (wird per fancyhdr gesetzt)
+        Logo wird aus DB geladen (falls vorhanden)
         """
         
         parts = []
@@ -215,8 +262,11 @@ class LaTeXGenerator:
         parts.append(r"\thispagestyle{fancy}")
         
         # Logo und QR-Code Zeile
+        if self.logo_path and os.path.exists(self.logo_path):
+            # Logo aus DB verwenden
+            parts.append(r"\fancyhead[L]{\includegraphics[height=1.5cm]{" + self.logo_path + r"}}")
+        
         if qr_code_data:
-            parts.append(r"\fancyhead[L]{\includegraphics[height=1.5cm]{logo.png}}")  # TODO: Logo aus DB
             parts.append(r"\fancyhead[R]{\qrcode[height=1.5cm]{" + qr_code_data + r"}}")
         
         # Laufender Header ab Seite 2
@@ -305,10 +355,6 @@ class LaTeXGenerator:
             Geschätzte Seitenzahl
         """
         
-        # Grobe Schätzung: 
-        # - Erste Seite: Header + Metadata + 1-2 Aufgaben
-        # - Pro weitere Seite: ~2-3 Aufgaben
-        
         anzahl_aufgaben = len([ka for ka in self.klausur.aufgaben if ka.ist_aktiv])
         
         if anzahl_aufgaben <= 2:
@@ -321,15 +367,23 @@ class LaTeXGenerator:
             return 4
 
 
-def generate_latex_for_klausur(klausur: Klausur) -> str:
+def generate_latex_for_klausur(
+    klausur: Klausur, 
+    logo_blob: bytes = None,
+    kasusid: int = None
+) -> str:
     """
     Convenience-Funktion
     
     Args:
         klausur: Klausur-Objekt
+        logo_blob: Optional - Logo aus DB (schulen.logo)
+        kasusid: Optional - KasusID aus DB (kasusid_counter)
         
     Returns:
         LaTeX-Code
     """
-    generator = LaTeXGenerator(klausur)
-    return generator.generate_complete_latex()
+    generator = LaTeXGenerator(klausur, logo_blob, kasusid)
+    latex = generator.generate_complete_latex()
+    generator.cleanup()  # Temp-Dateien aufräumen
+    return latex
