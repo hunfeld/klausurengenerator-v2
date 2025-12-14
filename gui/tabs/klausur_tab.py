@@ -8,7 +8,7 @@ Step 3: Anordnung
 Step 4: PDF-Optionen
 Step 5: Generierung
 
-v2.0.1 - Bugfix: Edit-Modus lädt Aufgaben in Step 2
+v2.0.2 - LaTeX-Code Preview in Step 2
 """
 
 from PyQt6.QtWidgets import (
@@ -16,10 +16,10 @@ from PyQt6.QtWidgets import (
     QFrame, QGroupBox, QComboBox, QRadioButton, QButtonGroup, QSpinBox,
     QLineEdit, QDateEdit, QMessageBox, QFormLayout, QScrollArea, QSplitter,
     QTableWidget, QTableWidgetItem, QTextEdit, QHeaderView, QListWidget,
-    QListWidgetItem
+    QListWidgetItem, QPlainTextEdit
 )
 from PyQt6.QtCore import Qt, QDate
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QTextOption
 import json
 
 from core.database import get_database
@@ -701,7 +701,7 @@ class Step1Setup(QWidget):
 # ============================================================
 
 class Step2AufgabenAuswahl(QWidget):
-    """Step 2: Aufgaben aus Pool auswählen - KOMPLETT IMPLEMENTIERT!"""
+    """Step 2: Aufgaben aus Pool auswählen - MIT LATEX PREVIEW!"""
     
     def __init__(self, parent_tab):
         super().__init__()
@@ -784,7 +784,7 @@ class Step2AufgabenAuswahl(QWidget):
         self.aufgaben_table.doubleClicked.connect(self.add_aufgabe)
         pool_split.addWidget(self.aufgaben_table)
         
-        # Rechts: Detail + Button
+        # Rechts: Detail + LaTeX Preview
         detail_widget = QWidget()
         detail_layout = QVBoxLayout(detail_widget)
         detail_layout.setContentsMargins(0, 0, 0, 0)
@@ -793,9 +793,22 @@ class Step2AufgabenAuswahl(QWidget):
         detail_label.setStyleSheet("font-weight: bold;")
         detail_layout.addWidget(detail_label)
         
+        # Metadaten (HTML)
         self.detail_text = QTextEdit()
         self.detail_text.setReadOnly(True)
+        self.detail_text.setMaximumHeight(150)
         detail_layout.addWidget(self.detail_text)
+        
+        # LaTeX-Code (PlainText mit Monospace-Font)
+        latex_label = QLabel("📝 LaTeX-Code:")
+        latex_label.setStyleSheet("font-weight: bold; margin-top: 5px;")
+        detail_layout.addWidget(latex_label)
+        
+        self.latex_text = QPlainTextEdit()
+        self.latex_text.setReadOnly(True)
+        self.latex_text.setFont(QFont("Courier New", 9))
+        self.latex_text.setWordWrapMode(QTextOption.WrapMode.NoWrap)
+        detail_layout.addWidget(self.latex_text)
         
         self.add_btn = QPushButton("➕ Hinzufügen")
         self.add_btn.setEnabled(False)
@@ -803,7 +816,7 @@ class Step2AufgabenAuswahl(QWidget):
         detail_layout.addWidget(self.add_btn)
         
         pool_split.addWidget(detail_widget)
-        pool_split.setSizes([600, 300])
+        pool_split.setSizes([600, 400])
         
         pool_layout.addWidget(pool_split)
         main_split.addWidget(pool_widget)
@@ -818,6 +831,7 @@ class Step2AufgabenAuswahl(QWidget):
         selected_layout.addWidget(selected_label)
         
         self.selected_list = QListWidget()
+        self.selected_list.itemSelectionChanged.connect(self.on_selected_aufgabe_clicked)
         selected_layout.addWidget(self.selected_list)
         
         # Buttons
@@ -843,9 +857,6 @@ class Step2AufgabenAuswahl(QWidget):
         main_split.setSizes([400, 200])
         
         layout.addWidget(main_split)
-        
-        # Signal für selected_list
-        self.selected_list.itemSelectionChanged.connect(self.on_selected_item_changed)
     
     def on_enter(self):
         """Wird aufgerufen wenn Step 2 betreten wird"""
@@ -889,11 +900,12 @@ class Step2AufgabenAuswahl(QWidget):
             self.aufgaben_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, aufgabe)
     
     def on_aufgabe_selected(self):
-        """Aufgabe in Tabelle ausgewählt"""
+        """Aufgabe in Tabelle ausgewählt → Zeige Detail + LaTeX"""
         selected_rows = self.aufgaben_table.selectedItems()
         
         if not selected_rows:
             self.detail_text.clear()
+            self.latex_text.clear()
             self.add_btn.setEnabled(False)
             return
         
@@ -901,20 +913,46 @@ class Step2AufgabenAuswahl(QWidget):
         row = selected_rows[0].row()
         aufgabe = self.aufgaben_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
         
-        # Detail anzeigen
+        # Metadaten anzeigen
         detail_html = f"""
         <h3>{aufgabe['titel']}</h3>
-        <p><b>ID:</b> {aufgabe['id']}</p>
-        <p><b>Themengebiet:</b> {aufgabe['themengebiet'] or '-'}</p>
-        <p><b>Schwierigkeit:</b> {aufgabe['schwierigkeit'] or '-'}</p>
-        <p><b>Anforderungsbereich:</b> {aufgabe['anforderungsbereich'] or '-'}</p>
-        <p><b>Punkte:</b> {aufgabe['punkte'] or 0}</p>
-        <p><b>Platzbedarf:</b> {aufgabe['platzbedarf_min'] or 0.0} cm</p>
+        <p><b>ID:</b> {aufgabe['id']} | <b>Punkte:</b> {aufgabe['punkte'] or 0} | <b>AFB:</b> {aufgabe['anforderungsbereich'] or '-'}</p>
+        <p><b>Themengebiet:</b> {aufgabe['themengebiet'] or '-'} | <b>Schwierigkeit:</b> {aufgabe['schwierigkeit'] or '-'}</p>
         <p><b>Schlagwörter:</b> {aufgabe['schlagwoerter'] or '-'}</p>
         """
-        
         self.detail_text.setHtml(detail_html)
+        
+        # LaTeX-Code anzeigen
+        latex_code = aufgabe.get('latex_code', '') or '(Kein LaTeX-Code vorhanden)'
+        self.latex_text.setPlainText(latex_code)
+        
         self.add_btn.setEnabled(True)
+    
+    def on_selected_aufgabe_clicked(self):
+        """Aufgabe in selected_list ausgewählt → Zeige Detail + LaTeX"""
+        selected_items = self.selected_list.selectedItems()
+        
+        # Enable/Disable Remove-Button
+        self.remove_btn.setEnabled(len(selected_items) > 0)
+        
+        if not selected_items:
+            return
+        
+        # Hole Aufgabe aus UserRole
+        aufgabe = selected_items[0].data(Qt.ItemDataRole.UserRole)
+        
+        # Metadaten anzeigen
+        detail_html = f"""
+        <h3>{aufgabe['titel']}</h3>
+        <p><b>ID:</b> {aufgabe['id']} | <b>Punkte:</b> {aufgabe['punkte'] or 0} | <b>AFB:</b> {aufgabe['anforderungsbereich'] or '-'}</p>
+        <p><b>Themengebiet:</b> {aufgabe['themengebiet'] or '-'} | <b>Schwierigkeit:</b> {aufgabe['schwierigkeit'] or '-'}</p>
+        <p><b>Schlagwörter:</b> {aufgabe['schlagwoerter'] or '-'}</p>
+        """
+        self.detail_text.setHtml(detail_html)
+        
+        # LaTeX-Code anzeigen
+        latex_code = aufgabe.get('latex_code', '') or '(Kein LaTeX-Code vorhanden)'
+        self.latex_text.setPlainText(latex_code)
     
     def add_aufgabe(self):
         """Aufgabe zur Auswahl hinzufügen"""
@@ -942,10 +980,6 @@ class Step2AufgabenAuswahl(QWidget):
         
         # Update Count
         self.update_count()
-    
-    def on_selected_item_changed(self):
-        """Item in selected_list ausgewählt"""
-        self.remove_btn.setEnabled(len(self.selected_list.selectedItems()) > 0)
     
     def remove_aufgabe(self):
         """Aufgabe aus Auswahl entfernen"""
@@ -1080,6 +1114,8 @@ class Step2AufgabenAuswahl(QWidget):
         self.search_edit.clear()
         self.schwierigkeit_combo.setCurrentIndex(0)
         self.afb_combo.setCurrentIndex(0)
+        self.detail_text.clear()
+        self.latex_text.clear()
         self.update_count()
 
 
