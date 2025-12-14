@@ -8,7 +8,7 @@ Step 3: Anordnung
 Step 4: PDF-Optionen
 Step 5: Generierung
 
-v2.0.0 - Step 2 komplett implementiert!
+v2.0.1 - Bugfix: Edit-Modus lädt Aufgaben in Step 2
 """
 
 from PyQt6.QtWidgets import (
@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
+import json
 
 from core.database import get_database
 from core.models import Klausur, Schule
@@ -165,6 +166,9 @@ class KlausurTab(QWidget):
         
         # Step 1 UI mit Daten füllen
         self.step1.load_from_klausur(klausur_data)
+        
+        # Step 2 UI mit Daten füllen (NEU!)
+        self.step2.load_from_klausur(klausur_data)
         
         # Gehe zu Step 1
         self.goto_step(0)
@@ -992,6 +996,65 @@ class Step2AufgabenAuswahl(QWidget):
         ])
         
         self.count_label.setText(f"{count} Aufgaben ausgewählt ({total_punkte} Punkte)")
+    
+    def load_from_klausur(self, klausur_data):
+        """
+        UI mit Klausur-Daten füllen (Edit-Modus)
+        
+        NEU! Lädt ausgewählte Aufgaben aus aufgaben_json
+        """
+        try:
+            # Parse aufgaben_json
+            aufgaben_json = klausur_data.get('aufgaben_json', '[]')
+            
+            if isinstance(aufgaben_json, str):
+                aufgaben_data = json.loads(aufgaben_json)
+            else:
+                aufgaben_data = aufgaben_json
+            
+            # Falls leere Liste → nichts zu tun
+            if not aufgaben_data:
+                print("Step 2: Keine Aufgaben in aufgaben_json")
+                return
+            
+            # Aufgaben-IDs extrahieren
+            if isinstance(aufgaben_data, list):
+                # Fall 1: Liste von IDs [1, 2, 3]
+                if isinstance(aufgaben_data[0], int):
+                    aufgaben_ids = aufgaben_data
+                # Fall 2: Liste von Dicts [{"id": 1, ...}, ...]
+                elif isinstance(aufgaben_data[0], dict):
+                    aufgaben_ids = [a.get('id') or a.get('aufgabe_id') for a in aufgaben_data]
+                else:
+                    print(f"Step 2: Unbekanntes Format: {type(aufgaben_data[0])}")
+                    return
+            else:
+                print(f"Step 2: aufgaben_json ist keine Liste: {type(aufgaben_data)}")
+                return
+            
+            print(f"Step 2: Lade {len(aufgaben_ids)} Aufgaben aus DB")
+            
+            # Aufgaben aus DB laden und hinzufügen
+            for aufgabe_id in aufgaben_ids:
+                aufgabe = self.db.get_aufgabe_by_id(aufgabe_id)
+                
+                if aufgabe:
+                    # Hinzufügen (ohne Duplikatsprüfung im Edit-Modus)
+                    self.selected_aufgaben_ids.append(aufgabe_id)
+                    
+                    item = QListWidgetItem(f"#{len(self.selected_aufgaben_ids)}: {aufgabe['titel']} ({aufgabe['punkte']} P)")
+                    item.setData(Qt.ItemDataRole.UserRole, aufgabe)
+                    self.selected_list.addItem(item)
+                else:
+                    print(f"Step 2: Aufgabe {aufgabe_id} nicht gefunden!")
+            
+            self.update_count()
+            print(f"Step 2: {len(self.selected_aufgaben_ids)} Aufgaben geladen")
+            
+        except Exception as e:
+            print(f"Fehler beim Laden der Aufgaben in Step 2: {e}")
+            import traceback
+            traceback.print_exc()
         
     def validate(self):
         """Validierung"""
