@@ -8,7 +8,7 @@ Step 3: Anordnung
 Step 4: PDF-Optionen
 Step 5: Generierung
 
-v1.0.11 - Bugfix: blockSignals() während Initialisierung
+v1.0.12 - Bugfix: Signal-Connections ans Ende verschoben
 """
 
 from PyQt6.QtWidgets import (
@@ -349,7 +349,7 @@ class Step1Setup(QWidget):
         schule_layout = QFormLayout(schule_group)
         
         self.schule_combo = QComboBox()
-        self.schule_combo.currentIndexChanged.connect(self.on_schule_changed)
+        # Signal NOCH NICHT verbinden!
         schule_layout.addRow("Schule:", self.schule_combo)
         
         layout.addWidget(schule_group)
@@ -386,7 +386,7 @@ class Step1Setup(QWidget):
         self.jahrgangsstufe_spin = QSpinBox()
         self.jahrgangsstufe_spin.setRange(5, 13)
         self.jahrgangsstufe_spin.setValue(8)
-        self.jahrgangsstufe_spin.valueChanged.connect(self.on_jahrgangsstufe_changed)
+        # Signal NOCH NICHT verbinden!
         klasse_layout.addRow("Jahrgangsstufe:", self.jahrgangsstufe_spin)
         
         # Klasse (editable ComboBox!)
@@ -396,7 +396,7 @@ class Step1Setup(QWidget):
         
         # Schuljahr
         self.schuljahr_combo = QComboBox()
-        self.schuljahr_combo.currentIndexChanged.connect(self.on_schuljahr_changed)
+        # Signal NOCH NICHT verbinden!
         klasse_layout.addRow("Schuljahr:", self.schuljahr_combo)
         
         layout.addWidget(klasse_group)
@@ -437,8 +437,7 @@ class Step1Setup(QWidget):
         self.datum_edit.setCalendarPopup(True)
         self.datum_edit.setDate(QDate.currentDate())
         self.datum_edit.setDisplayFormat("dd.MM.yyyy")
-        # Verbinde Signal für automatische Schuljahr-Berechnung
-        self.datum_edit.dateChanged.connect(self.on_datum_changed)
+        # Signal NOCH NICHT verbinden!
         termin_layout.addRow("Datum:", self.datum_edit)
         
         # Bearbeitungszeit
@@ -478,21 +477,21 @@ class Step1Setup(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(scroll)
         
-        # JETZT ERST am Ende: Initial-Daten laden
-        # WICHTIG: Signals blocken während Initialisierung!
-        self.schule_combo.blockSignals(True)
-        self.schuljahr_combo.blockSignals(True)
-        self.jahrgangsstufe_spin.blockSignals(True)
-        
+        # ============================================================
+        # JETZT ERST: Initial-Daten laden (OHNE Signal-Triggering!)
+        # ============================================================
         self.load_schulen()
         self.populate_schuljahre()
         self.update_schuljahr_from_datum()
         self.load_klassen()
         
-        # Signals wieder freigeben
-        self.schule_combo.blockSignals(False)
-        self.schuljahr_combo.blockSignals(False)
-        self.jahrgangsstufe_spin.blockSignals(False)
+        # ============================================================
+        # GANZ AM ENDE: Signals verbinden!
+        # ============================================================
+        self.schule_combo.currentIndexChanged.connect(self.on_schule_changed)
+        self.schuljahr_combo.currentIndexChanged.connect(self.on_schuljahr_changed)
+        self.jahrgangsstufe_spin.valueChanged.connect(self.on_jahrgangsstufe_changed)
+        self.datum_edit.dateChanged.connect(self.on_datum_changed)
         
     def populate_schuljahre(self):
         """
