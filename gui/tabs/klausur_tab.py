@@ -8,7 +8,7 @@ Step 3: Anordnung
 Step 4: PDF-Optionen
 Step 5: Generierung
 
-v1.0.8 - Bugfix: Schuljahr-Berechnung und Klasse-Dropdown
+v1.0.9 - Bugfix: Initialisierungsreihenfolge
 """
 
 from PyQt6.QtWidgets import (
@@ -396,7 +396,7 @@ class Step1Setup(QWidget):
         
         # Schuljahr
         self.schuljahr_combo = QComboBox()
-        self.populate_schuljahre()
+        self.populate_schuljahre()  # JETZT ohne Update-Aufruf!
         klasse_layout.addRow("Schuljahr:", self.schuljahr_combo)
         
         layout.addWidget(klasse_group)
@@ -478,8 +478,9 @@ class Step1Setup(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(scroll)
         
-        # Initial laden
+        # JETZT ERST am Ende: Klassen + Schuljahr initialisieren
         self.load_klassen()
+        self.update_schuljahr_from_datum()  # JETZT sicher, da datum_edit existiert!
         
     def populate_schuljahre(self):
         """Schuljahre für Dropdown generieren"""
@@ -493,8 +494,8 @@ class Step1Setup(QWidget):
             schuljahr = f"{year}/{year+1}"
             self.schuljahr_combo.addItem(schuljahr)
         
-        # Setze aktuelles Schuljahr
-        self.update_schuljahr_from_datum()
+        # NICHT mehr hier update_schuljahr_from_datum() aufrufen!
+        # Das passiert am Ende von setup_ui()
     
     def on_datum_changed(self):
         """
