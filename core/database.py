@@ -2,7 +2,7 @@
 Datenbank-Verwaltung
 ====================
 
-SQLite-Anbindung für sus.db - v1.0.3 Bugfix (richtige Tabellen)
+SQLite-Anbindung für sus.db - v1.0.6 update_klausur() hinzugefügt
 """
 
 import sqlite3
@@ -366,9 +366,13 @@ class Database:
                 titel,
                 datum,
                 fach,
+                jahrgangsstufe,
                 klasse,
                 schule,
                 typ,
+                zeit_minuten,
+                aufgaben_json,
+                seitenumbrueche_json,
                 erstellt_am
             FROM klausuren
             ORDER BY erstellt_am DESC
@@ -409,6 +413,49 @@ class Database:
         )
         
         return self.execute_insert(query, params)
+    
+    def update_klausur(self, data: Dict[str, Any]) -> int:
+        """
+        Klausur aktualisieren
+        
+        NEU! Für Edit-Modus
+        
+        Args:
+            data: Dictionary mit Klausur-Daten (muss 'id' enthalten!)
+            
+        Returns:
+            Anzahl geänderter Zeilen (sollte 1 sein)
+        """
+        query = """
+            UPDATE klausuren SET
+                titel = ?,
+                datum = ?,
+                fach = ?,
+                jahrgangsstufe = ?,
+                typ = ?,
+                schule = ?,
+                klasse = ?,
+                zeit_minuten = ?,
+                aufgaben_json = ?,
+                seitenumbrueche_json = ?
+            WHERE id = ?
+        """
+        
+        params = (
+            data['titel'],
+            data.get('datum', ''),
+            data.get('fach', ''),
+            data.get('jahrgangsstufe', 0),
+            data.get('typ', 'Klassenarbeit'),
+            data.get('schule', ''),
+            data.get('klasse', ''),
+            data.get('zeit_minuten', 45),
+            data.get('aufgaben_json', '[]'),
+            data.get('seitenumbrueche_json', '[]'),
+            data['id']  # WHERE-Bedingung!
+        )
+        
+        return self.execute_update(query, params)
     
     def get_klausur_by_id(self, klausur_id: int) -> Optional[Dict[str, Any]]:
         """Einzelne Klausur laden"""
