@@ -3,12 +3,12 @@ Klausur-Tab mit 5-Step-Wizard
 ==============================
 
 Step 1: Setup (Grunddaten)
-Step 2: Aufgaben auswählen
+Step 2: Aufgaben auswählen (MIT PNG-PREVIEW!)
 Step 3: Anordnung
 Step 4: PDF-Optionen
 Step 5: Generierung
 
-v2.0.2 - LaTeX-Code Preview in Step 2
+v2.0.3 - PNG-Vorschau in Step 2
 """
 
 from PyQt6.QtWidgets import (
@@ -19,11 +19,12 @@ from PyQt6.QtWidgets import (
     QListWidgetItem, QPlainTextEdit
 )
 from PyQt6.QtCore import Qt, QDate
-from PyQt6.QtGui import QFont, QTextOption
+from PyQt6.QtGui import QFont, QTextOption, QPixmap
 import json
 
 from core.database import get_database
 from core.models import Klausur, Schule
+from utils.latex_renderer import render_latex_to_png
 
 
 class KlausurTab(QWidget):
@@ -697,11 +698,11 @@ class Step1Setup(QWidget):
 
 
 # ============================================================
-# STEP 2: AUFGABEN AUSWÄHLEN
+# STEP 2: AUFGABEN AUSWÄHLEN - MIT PNG-PREVIEW!
 # ============================================================
 
 class Step2AufgabenAuswahl(QWidget):
-    """Step 2: Aufgaben aus Pool auswählen - MIT LATEX PREVIEW!"""
+    """Step 2: Aufgaben aus Pool auswählen - MIT LATEX + PNG PREVIEW!"""
     
     def __init__(self, parent_tab):
         super().__init__()
@@ -784,7 +785,7 @@ class Step2AufgabenAuswahl(QWidget):
         self.aufgaben_table.doubleClicked.connect(self.add_aufgabe)
         pool_split.addWidget(self.aufgaben_table)
         
-        # Rechts: Detail + LaTeX Preview
+        # Rechts: Detail + LaTeX + PNG Preview
         detail_widget = QWidget()
         detail_layout = QVBoxLayout(detail_widget)
         detail_layout.setContentsMargins(0, 0, 0, 0)
@@ -796,7 +797,7 @@ class Step2AufgabenAuswahl(QWidget):
         # Metadaten (HTML)
         self.detail_text = QTextEdit()
         self.detail_text.setReadOnly(True)
-        self.detail_text.setMaximumHeight(150)
+        self.detail_text.setMaximumHeight(100)
         detail_layout.addWidget(self.detail_text)
         
         # LaTeX-Code (PlainText mit Monospace-Font)
@@ -808,15 +809,42 @@ class Step2AufgabenAuswahl(QWidget):
         self.latex_text.setReadOnly(True)
         self.latex_text.setFont(QFont("Courier New", 9))
         self.latex_text.setWordWrapMode(QTextOption.WrapMode.NoWrap)
+        self.latex_text.setMaximumHeight(150)
         detail_layout.addWidget(self.latex_text)
+        
+        # PNG-Preview NEU!
+        preview_label = QLabel("🖼️ Vorschau:")
+        preview_label.setStyleSheet("font-weight: bold; margin-top: 5px;")
+        detail_layout.addWidget(preview_label)
+        
+        # ScrollArea für PNG
+        preview_scroll = QScrollArea()
+        preview_scroll.setWidgetResizable(True)
+        preview_scroll.setMinimumHeight(200)
+        
+        self.preview_label = QLabel("(Keine Vorschau)")
+        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_label.setStyleSheet("background-color: white; border: 1px solid #ccc;")
+        preview_scroll.setWidget(self.preview_label)
+        detail_layout.addWidget(preview_scroll)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        
+        self.render_btn = QPushButton("🔄 Vorschau generieren")
+        self.render_btn.setEnabled(False)
+        self.render_btn.clicked.connect(self.render_preview)
+        buttons_layout.addWidget(self.render_btn)
         
         self.add_btn = QPushButton("➕ Hinzufügen")
         self.add_btn.setEnabled(False)
         self.add_btn.clicked.connect(self.add_aufgabe)
-        detail_layout.addWidget(self.add_btn)
+        buttons_layout.addWidget(self.add_btn)
+        
+        detail_layout.addLayout(buttons_layout)
         
         pool_split.addWidget(detail_widget)
-        pool_split.setSizes([600, 400])
+        pool_split.setSizes([600, 450])
         
         pool_layout.addWidget(pool_split)
         main_split.addWidget(pool_widget)
@@ -854,7 +882,7 @@ class Step2AufgabenAuswahl(QWidget):
         selected_layout.addLayout(selected_buttons)
         
         main_split.addWidget(selected_widget)
-        main_split.setSizes([400, 200])
+        main_split.setSizes([450, 200])
         
         layout.addWidget(main_split)
     
@@ -906,7 +934,10 @@ class Step2AufgabenAuswahl(QWidget):
         if not selected_rows:
             self.detail_text.clear()
             self.latex_text.clear()
+            self.preview_label.clear()
+            self.preview_label.setText("(Keine Vorschau)")
             self.add_btn.setEnabled(False)
+            self.render_btn.setEnabled(False)
             return
         
         # Erste Zelle der Zeile
@@ -917,8 +948,7 @@ class Step2AufgabenAuswahl(QWidget):
         detail_html = f"""
         <h3>{aufgabe['titel']}</h3>
         <p><b>ID:</b> {aufgabe['id']} | <b>Punkte:</b> {aufgabe['punkte'] or 0} | <b>AFB:</b> {aufgabe['anforderungsbereich'] or '-'}</p>
-        <p><b>Themengebiet:</b> {aufgabe['themengebiet'] or '-'} | <b>Schwierigkeit:</b> {aufgabe['schwierigkeit'] or '-'}</p>
-        <p><b>Schlagwörter:</b> {aufgabe['schlagwoerter'] or '-'}</p>
+        <p><b>Thema:</b> {aufgabe['themengebiet'] or '-'} | <b>Schwierigkeit:</b> {aufgabe['schwierigkeit'] or '-'}</p>
         """
         self.detail_text.setHtml(detail_html)
         
@@ -926,7 +956,13 @@ class Step2AufgabenAuswahl(QWidget):
         latex_code = aufgabe.get('latex_code', '') or '(Kein LaTeX-Code vorhanden)'
         self.latex_text.setPlainText(latex_code)
         
+        # Preview zurücksetzen
+        self.preview_label.clear()
+        self.preview_label.setText("(Klicke 'Vorschau generieren')")
+        
+        # Buttons enablen
         self.add_btn.setEnabled(True)
+        self.render_btn.setEnabled(bool(aufgabe.get('latex_code')))
     
     def on_selected_aufgabe_clicked(self):
         """Aufgabe in selected_list ausgewählt → Zeige Detail + LaTeX"""
@@ -945,14 +981,67 @@ class Step2AufgabenAuswahl(QWidget):
         detail_html = f"""
         <h3>{aufgabe['titel']}</h3>
         <p><b>ID:</b> {aufgabe['id']} | <b>Punkte:</b> {aufgabe['punkte'] or 0} | <b>AFB:</b> {aufgabe['anforderungsbereich'] or '-'}</p>
-        <p><b>Themengebiet:</b> {aufgabe['themengebiet'] or '-'} | <b>Schwierigkeit:</b> {aufgabe['schwierigkeit'] or '-'}</p>
-        <p><b>Schlagwörter:</b> {aufgabe['schlagwoerter'] or '-'}</p>
+        <p><b>Thema:</b> {aufgabe['themengebiet'] or '-'} | <b>Schwierigkeit:</b> {aufgabe['schwierigkeit'] or '-'}</p>
         """
         self.detail_text.setHtml(detail_html)
         
         # LaTeX-Code anzeigen
         latex_code = aufgabe.get('latex_code', '') or '(Kein LaTeX-Code vorhanden)'
         self.latex_text.setPlainText(latex_code)
+        
+        # Preview zurücksetzen
+        self.preview_label.clear()
+        self.preview_label.setText("(Klicke 'Vorschau generieren')")
+        
+        # Render-Button enablen
+        self.render_btn.setEnabled(bool(aufgabe.get('latex_code')))
+    
+    def render_preview(self):
+        """LaTeX zu PNG rendern - NEU!"""
+        # Hole aktuelle Aufgabe
+        selected_rows = self.aufgaben_table.selectedItems()
+        
+        if not selected_rows:
+            selected_items = self.selected_list.selectedItems()
+            if not selected_items:
+                return
+            aufgabe = selected_items[0].data(Qt.ItemDataRole.UserRole)
+        else:
+            row = selected_rows[0].row()
+            aufgabe = self.aufgaben_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        
+        latex_code = aufgabe.get('latex_code', '')
+        
+        if not latex_code:
+            self.preview_label.setText("(Kein LaTeX-Code vorhanden)")
+            return
+        
+        # Rendering läuft
+        self.preview_label.setText("⏳ Rendering läuft...")
+        self.render_btn.setEnabled(False)
+        
+        try:
+            png_path = render_latex_to_png(latex_code, dpi=150, crop=True)
+            
+            if png_path:
+                pixmap = QPixmap(png_path)
+                
+                # Skalieren auf max 600px Breite
+                if pixmap.width() > 600:
+                    pixmap = pixmap.scaledToWidth(600, Qt.TransformationMode.SmoothTransformation)
+                
+                self.preview_label.setPixmap(pixmap)
+                self.preview_label.setText("")
+            else:
+                self.preview_label.setText("❌ Rendering fehlgeschlagen\n(Prüfe LaTeX-Installation)")
+                
+        except Exception as e:
+            self.preview_label.setText(f"❌ Fehler: {str(e)}")
+            print(f"Preview-Fehler: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.render_btn.setEnabled(True)
     
     def add_aufgabe(self):
         """Aufgabe zur Auswahl hinzufügen"""
@@ -1116,6 +1205,8 @@ class Step2AufgabenAuswahl(QWidget):
         self.afb_combo.setCurrentIndex(0)
         self.detail_text.clear()
         self.latex_text.clear()
+        self.preview_label.clear()
+        self.preview_label.setText("(Keine Vorschau)")
         self.update_count()
 
 
