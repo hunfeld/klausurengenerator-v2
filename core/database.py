@@ -2,7 +2,7 @@
 Datenbank-Verwaltung
 ====================
 
-SQLite-Anbindung für sus.db - v1.0.1 Bugfix
+SQLite-Anbindung für sus.db - v1.0.3 Bugfix (richtige Tabellen)
 """
 
 import sqlite3
@@ -351,7 +351,75 @@ class Database:
         return results[0] if results else None
     
     # ============================================================
-    # KLAUSUREN
+    # KLAUSUREN (NEUE TABELLE!)
+    # ============================================================
+    
+    def get_recent_klausuren(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Letzte Klausuren laden (für Dashboard)
+        
+        WICHTIG: Greift auf 'klausuren' Tabelle zu (nicht klausuren_alt!)
+        """
+        query = """
+            SELECT 
+                id,
+                titel,
+                datum,
+                fach,
+                klasse,
+                schule,
+                typ,
+                erstellt_am
+            FROM klausuren
+            ORDER BY erstellt_am DESC
+            LIMIT ?
+        """
+        
+        return self.execute_query(query, (limit,))
+    
+    def create_klausur(self, data: Dict[str, Any]) -> int:
+        """
+        Neue Klausur erstellen
+        
+        Args:
+            data: Dictionary mit Klausur-Daten
+            
+        Returns:
+            ID der neuen Klausur
+        """
+        query = """
+            INSERT INTO klausuren (
+                titel, datum, fach, jahrgangsstufe, typ,
+                schule, klasse, zeit_minuten, aufgaben_json,
+                seitenumbrueche_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        
+        params = (
+            data['titel'],
+            data.get('datum', ''),
+            data.get('fach', ''),
+            data.get('jahrgangsstufe', 0),
+            data.get('typ', 'Klassenarbeit'),
+            data.get('schule', ''),
+            data.get('klasse', ''),
+            data.get('zeit_minuten', 45),
+            data.get('aufgaben_json', '[]'),
+            data.get('seitenumbrueche_json', '[]')
+        )
+        
+        return self.execute_insert(query, params)
+    
+    def get_klausur_by_id(self, klausur_id: int) -> Optional[Dict[str, Any]]:
+        """Einzelne Klausur laden"""
+        results = self.execute_query(
+            "SELECT * FROM klausuren WHERE id = ?",
+            (klausur_id,)
+        )
+        return results[0] if results else None
+    
+    # ============================================================
+    # KLAUSURVORLAGEN (Templates für Klausuren)
     # ============================================================
     
     def get_klausurvorlagen(self, fach: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -388,25 +456,6 @@ class Database:
         )
         
         return self.execute_insert(query, params)
-    
-    def get_recent_klausuren(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Letzte Klausuren laden (für Dashboard)"""
-        query = """
-            SELECT 
-                ka.id,
-                ka.datum,
-                ka.klasse,
-                kv.fach_bezeichnung as fach,
-                kv.thema,
-                s.name as schule
-            FROM klausuren_alt ka
-            LEFT JOIN klausurvorlagen kv ON ka.klausur_id = kv.id
-            LEFT JOIN schulen s ON ka.schule_id = s.id
-            ORDER BY ka.datum DESC
-            LIMIT ?
-        """
-        
-        return self.execute_query(query, (limit,))
     
     # ============================================================
     # KASUSID COUNTER
@@ -517,8 +566,8 @@ class Database:
         result = self.execute_query("SELECT COUNT(*) as count FROM aufgaben")
         stats['aufgaben'] = result[0]['count'] if result else 0
         
-        # Anzahl Klausuren
-        result = self.execute_query("SELECT COUNT(*) as count FROM klausurvorlagen")
+        # Anzahl Klausuren (aus klausuren Tabelle!)
+        result = self.execute_query("SELECT COUNT(*) as count FROM klausuren")
         stats['klausuren'] = result[0]['count'] if result else 0
         
         # Anzahl Grafiken
