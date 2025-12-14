@@ -2,7 +2,7 @@
 Datenbank-Verwaltung
 ====================
 
-SQLite-Anbindung für sus.db
+SQLite-Anbindung für sus.db - v1.0.1 Bugfix
 """
 
 import sqlite3
@@ -121,6 +121,25 @@ class Database:
             (kuerzel,)
         )
         return results[0] if results else None
+    
+    def get_logo_for_school(self, schule_kuerzel: str) -> Optional[bytes]:
+        """
+        Logo einer Schule laden (BLOB)
+        
+        Args:
+            schule_kuerzel: z.B. 'gyd', 'obs', 'gympap'
+            
+        Returns:
+            Logo als Bytes oder None
+        """
+        results = self.execute_query(
+            "SELECT logo FROM schulen WHERE kuerzel = ?",
+            (schule_kuerzel,)
+        )
+        
+        if results and results[0]['logo']:
+            return results[0]['logo']
+        return None
     
     # ============================================================
     # SCHÜLER
@@ -271,13 +290,14 @@ class Database:
         
         return self.execute_insert(query, params)
     
-    def update_aufgabe(self, aufgabe_id: int, data: Dict[str, Any]) -> int:
+    def update_aufgabe(self, data: Dict[str, Any]) -> int:
         """Aufgabe aktualisieren"""
         query = """
             UPDATE aufgaben SET
                 titel = ?, themengebiet = ?, schwierigkeit = ?,
-                schlagwoerter = ?, aufgaben_daten = ?, punkte = ?,
-                latex_code = ?
+                schlagwoerter = ?, fach = ?, anforderungsbereich = ?,
+                punkte = ?, jahrgangsstufe = ?, schulform = ?,
+                platzbedarf_min = ?, latex_code = ?
             WHERE id = ?
         """
         
@@ -286,10 +306,14 @@ class Database:
             data.get('themengebiet', ''),
             data.get('schwierigkeit', 'mittel'),
             data.get('schlagwoerter', ''),
-            data.get('aufgaben_daten', ''),
+            data.get('fach', ''),
+            data.get('anforderungsbereich', 'II'),
             data.get('punkte', 0),
+            data.get('jahrgangsstufe', 0),
+            data.get('schulform', 'Gymnasium'),
+            data.get('platzbedarf_min', 0.0),
             data.get('latex_code', ''),
-            aufgabe_id
+            data['id']
         )
         
         return self.execute_update(query, params)
@@ -365,6 +389,25 @@ class Database:
         
         return self.execute_insert(query, params)
     
+    def get_recent_klausuren(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Letzte Klausuren laden (für Dashboard)"""
+        query = """
+            SELECT 
+                ka.id,
+                ka.datum,
+                ka.klasse,
+                kv.fach_bezeichnung as fach,
+                kv.thema,
+                s.name as schule
+            FROM klausuren_alt ka
+            LEFT JOIN klausurvorlagen kv ON ka.klausur_id = kv.id
+            LEFT JOIN schulen s ON ka.schule_id = s.id
+            ORDER BY ka.datum DESC
+            LIMIT ?
+        """
+        
+        return self.execute_query(query, (limit,))
+    
     # ============================================================
     # KASUSID COUNTER
     # ============================================================
@@ -403,6 +446,10 @@ class Database:
     # GRAFIKEN
     # ============================================================
     
+    def get_grafiken(self) -> List[Dict[str, Any]]:
+        """Alle Grafiken laden (Alias für get_grafiken_pool)"""
+        return self.get_grafiken_pool()
+    
     def get_grafiken_pool(self) -> List[Dict[str, Any]]:
         """Alle Grafiken aus Pool laden"""
         return self.execute_query(
@@ -416,6 +463,47 @@ class Database:
             (grafik_id,)
         )
         return results[0] if results else None
+    
+    def create_grafik(self, data: Dict[str, Any]) -> int:
+        """
+        Neue Grafik erstellen
+        
+        Args:
+            data: Dictionary mit Grafik-Daten
+                - name: str
+                - beschreibung: str
+                - dateityp: str (PNG, JPG, SVG, PDF)
+                - grafik_blob: bytes
+                - groesse_bytes: int
+                - tags: str
+                
+        Returns:
+            ID der neuen Grafik
+        """
+        query = """
+            INSERT INTO grafiken_pool (
+                name, beschreibung, dateityp, grafik_blob,
+                groesse_bytes, tags
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        """
+        
+        params = (
+            data['name'],
+            data.get('beschreibung', ''),
+            data['dateityp'],
+            data['grafik_blob'],
+            data.get('groesse_bytes', 0),
+            data.get('tags', '')
+        )
+        
+        return self.execute_insert(query, params)
+    
+    def delete_grafik(self, grafik_id: int) -> int:
+        """Grafik löschen"""
+        return self.execute_update(
+            "DELETE FROM grafiken_pool WHERE id = ?",
+            (grafik_id,)
+        )
     
     # ============================================================
     # STATISTIKEN
