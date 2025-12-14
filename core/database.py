@@ -2,7 +2,7 @@
 Datenbank-Verwaltung
 ====================
 
-SQLite-Anbindung für sus.db - v1.0.6 update_klausur() hinzugefügt
+SQLite-Anbindung für sus.db - v1.0.7 Erweiterte Aufgaben-Filter
 """
 
 import sqlite3
@@ -209,6 +209,7 @@ class Database:
         fach: Optional[str] = None,
         jahrgangsstufe: Optional[int] = None,
         schwierigkeit: Optional[str] = None,
+        anforderungsbereich: Optional[str] = None,
         suchtext: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
@@ -218,6 +219,7 @@ class Database:
             fach: "Mathematik", "Physik", "Informatik"
             jahrgangsstufe: 5-13
             schwierigkeit: "leicht", "mittel", "schwer"
+            anforderungsbereich: "I", "II", "III"
             suchtext: Volltext-Suche in Titel/Themengebiet
         """
         query = "SELECT * FROM aufgaben WHERE 1=1"
@@ -234,6 +236,10 @@ class Database:
         if schwierigkeit:
             query += " AND schwierigkeit = ?"
             params.append(schwierigkeit)
+        
+        if anforderungsbereich:
+            query += " AND anforderungsbereich = ?"
+            params.append(anforderungsbereich)
         
         if suchtext:
             query += " AND (titel LIKE ? OR themengebiet LIKE ?)"
