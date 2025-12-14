@@ -8,7 +8,7 @@ Step 3: Anordnung
 Step 4: PDF-Optionen
 Step 5: Generierung
 
-v1.0.7 - Edit-Modus hinzugefügt
+v1.0.8 - Bugfix: Schuljahr-Berechnung und Klasse-Dropdown
 """
 
 from PyQt6.QtWidgets import (
@@ -389,13 +389,14 @@ class Step1Setup(QWidget):
         self.jahrgangsstufe_spin.valueChanged.connect(self.on_jahrgangsstufe_changed)
         klasse_layout.addRow("Jahrgangsstufe:", self.jahrgangsstufe_spin)
         
-        # Klasse (wird dynamisch geladen)
+        # Klasse (editable ComboBox!)
         self.klasse_combo = QComboBox()
+        self.klasse_combo.setEditable(True)  # WICHTIG: User kann auch eigene eingeben!
         klasse_layout.addRow("Klasse:", self.klasse_combo)
         
         # Schuljahr
         self.schuljahr_combo = QComboBox()
-        self.schuljahr_combo.addItems(["2024/2025", "2025/2026"])
+        self.populate_schuljahre()
         klasse_layout.addRow("Schuljahr:", self.schuljahr_combo)
         
         layout.addWidget(klasse_group)
@@ -436,6 +437,8 @@ class Step1Setup(QWidget):
         self.datum_edit.setCalendarPopup(True)
         self.datum_edit.setDate(QDate.currentDate())
         self.datum_edit.setDisplayFormat("dd.MM.yyyy")
+        # Verbinde Signal für automatische Schuljahr-Berechnung
+        self.datum_edit.dateChanged.connect(self.on_datum_changed)
         termin_layout.addRow("Datum:", self.datum_edit)
         
         # Bearbeitungszeit
@@ -477,6 +480,55 @@ class Step1Setup(QWidget):
         
         # Initial laden
         self.load_klassen()
+        
+    def populate_schuljahre(self):
+        """Schuljahre für Dropdown generieren"""
+        current_year = QDate.currentDate().year()
+        
+        self.schuljahr_combo.clear()
+        
+        # Generiere 3 Jahre zurück und 2 Jahre voraus
+        for offset in range(-3, 3):
+            year = current_year + offset
+            schuljahr = f"{year}/{year+1}"
+            self.schuljahr_combo.addItem(schuljahr)
+        
+        # Setze aktuelles Schuljahr
+        self.update_schuljahr_from_datum()
+    
+    def on_datum_changed(self):
+        """
+        Wird aufgerufen wenn Datum geändert wird
+        
+        NEU: Berechnet Schuljahr automatisch
+        """
+        self.update_schuljahr_from_datum()
+    
+    def update_schuljahr_from_datum(self):
+        """
+        Berechne Schuljahr aus Datum
+        
+        Logik: 
+        - August bis Dezember → Jahr/Jahr+1
+        - Januar bis Juli → Jahr-1/Jahr
+        """
+        datum = self.datum_edit.date()
+        year = datum.year()
+        month = datum.month()
+        
+        if month >= 8:  # August - Dezember
+            schuljahr = f"{year}/{year+1}"
+        else:  # Januar - Juli
+            schuljahr = f"{year-1}/{year}"
+        
+        # Setze im Dropdown
+        index = self.schuljahr_combo.findText(schuljahr)
+        if index >= 0:
+            self.schuljahr_combo.setCurrentIndex(index)
+        else:
+            # Falls nicht in Liste, hinzufügen
+            self.schuljahr_combo.addItem(schuljahr)
+            self.schuljahr_combo.setCurrentText(schuljahr)
         
     def load_schulen(self):
         """Schulen aus DB laden"""
@@ -522,6 +574,7 @@ class Step1Setup(QWidget):
         UI mit Klausur-Daten füllen
         
         NEU! Für Edit-Modus
+        v1.0.8: Bugfix - Schuljahr aus Datum berechnen, Klasse richtig setzen
         """
         # Schule
         schule_kuerzel = klausur_data.get('schule', 'gyd')
@@ -536,15 +589,30 @@ class Step1Setup(QWidget):
                 button.setChecked(True)
                 break
         
-        # Jahrgangsstufe
+        # Jahrgangsstufe ZUERST setzen (triggert load_klassen)
         jahrgangsstufe = klausur_data.get('jahrgangsstufe', 8)
         self.jahrgangsstufe_spin.setValue(jahrgangsstufe)
         
-        # Klasse
+        # Datum DANN setzen (triggert Schuljahr-Berechnung!)
+        datum_str = klausur_data.get('datum', '')
+        if datum_str:
+            try:
+                datum = QDate.fromString(datum_str, "dd.MM.yyyy")
+                self.datum_edit.setDate(datum)
+                # update_schuljahr_from_datum wird automatisch aufgerufen!
+            except:
+                pass
+        
+        # Klasse setzen (NACH load_klassen!)
         klasse = klausur_data.get('klasse', '')
-        index = self.klasse_combo.findText(klasse)
-        if index >= 0:
-            self.klasse_combo.setCurrentIndex(index)
+        if klasse:
+            # Prüfe ob in Dropdown
+            index = self.klasse_combo.findText(klasse)
+            if index >= 0:
+                self.klasse_combo.setCurrentIndex(index)
+            else:
+                # Nicht in Dropdown → manuell setzen (editable!)
+                self.klasse_combo.setCurrentText(klasse)
         
         # Typ
         typ = klausur_data.get('typ', 'Klassenarbeit')
@@ -552,15 +620,6 @@ class Step1Setup(QWidget):
             if button.text() == typ:
                 button.setChecked(True)
                 break
-        
-        # Datum
-        datum_str = klausur_data.get('datum', '')
-        if datum_str:
-            try:
-                datum = QDate.fromString(datum_str, "dd.MM.yyyy")
-                self.datum_edit.setDate(datum)
-            except:
-                pass
         
         # Zeit
         zeit_minuten = klausur_data.get('zeit_minuten', 45)
@@ -602,7 +661,7 @@ class Step1Setup(QWidget):
         
         # Klasse
         klausur.jahrgangsstufe = self.jahrgangsstufe_spin.value()
-        klausur.klasse = self.klasse_combo.currentText()
+        klausur.klasse = self.klasse_combo.currentText()  # Kann auch manuell eingegeben sein!
         klausur.schuljahr = self.schuljahr_combo.currentText()
         
         # Typ
