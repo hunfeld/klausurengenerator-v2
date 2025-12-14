@@ -3,7 +3,7 @@ Dashboard-Tab
 =============
 
 Übersicht mit Live-Statistiken und letzten Klausuren
-v1.0.4 - Nutzt jetzt klausuren Tabelle
+v1.0.5 - Doppelklick zum Bearbeiten hinzugefügt
 """
 
 from PyQt6.QtWidgets import (
@@ -83,11 +83,13 @@ class DashboardTab(QWidget):
         layout.addLayout(stats_layout)
         
         # Letzte Klausuren
-        recent_group = QGroupBox("Letzte Klausuren")
+        recent_group = QGroupBox("Letzte Klausuren (Doppelklick zum Bearbeiten)")
         recent_layout = QVBoxLayout(recent_group)
         
         self.recent_list = QListWidget()
         self.recent_list.setMaximumHeight(200)
+        # NEU: Doppelklick-Signal verbinden!
+        self.recent_list.itemDoubleClicked.connect(self.klausur_bearbeiten)
         recent_layout.addWidget(self.recent_list)
         
         refresh_btn = QPushButton("🔄 Aktualisieren")
@@ -167,7 +169,8 @@ class DashboardTab(QWidget):
                     text = f"{fach} - {titel} ({klasse}, {datum})"
                     
                     item = QListWidgetItem(text)
-                    item.setData(Qt.ItemDataRole.UserRole, klausur['id'])
+                    # Speichere komplette Klausur-Daten im Item!
+                    item.setData(Qt.ItemDataRole.UserRole, klausur)
                     self.recent_list.addItem(item)
             else:
                 self.recent_list.addItem("Noch keine Klausuren erstellt")
@@ -177,6 +180,25 @@ class DashboardTab(QWidget):
             import traceback
             traceback.print_exc()
             self.recent_list.addItem(f"Fehler beim Laden: {e}")
+            
+    def klausur_bearbeiten(self, item):
+        """
+        Klausur bearbeiten (bei Doppelklick)
+        
+        NEU: Öffnet Wizard im Edit-Modus
+        """
+        # Klausur-Daten aus Item holen
+        klausur_data = item.data(Qt.ItemDataRole.UserRole)
+        
+        if not klausur_data or not isinstance(klausur_data, dict):
+            return
+        
+        # Öffne Wizard im Edit-Modus
+        if self.main_window:
+            self.main_window.tabs.setCurrentIndex(1)  # Klausur-Tab
+            klausur_tab = self.main_window.tabs.widget(1)
+            if hasattr(klausur_tab, 'load_klausur_for_edit'):
+                klausur_tab.load_klausur_for_edit(klausur_data)
             
     def neue_klausur(self):
         """Neue Klausur erstellen"""
@@ -190,7 +212,7 @@ class DashboardTab(QWidget):
     def aufgaben_oeffnen(self):
         """Aufgaben-Tab öffnen"""
         if self.main_window:
-            self.main_window.tabs.setCurrentIndex(2)
+            self.main_window.tabs.setCurrentIndex(3)  # Aufgaben ist jetzt Index 3!
             
     def showEvent(self, event):
         """Wird aufgerufen wenn Tab angezeigt wird"""
