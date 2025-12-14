@@ -3,6 +3,7 @@ Dashboard-Tab
 =============
 
 Übersicht mit Live-Statistiken und letzten Klausuren
+v1.0.4 - Nutzt jetzt klausuren Tabelle
 """
 
 from PyQt6.QtWidgets import (
@@ -70,7 +71,7 @@ class DashboardTab(QWidget):
         stats_layout = QHBoxLayout()
         
         self.aufgaben_stat = self.create_stat_widget("Aufgaben", "...")
-        self.klausuren_stat = self.create_stat_widget("Klausurvorlagen", "...")
+        self.klausuren_stat = self.create_stat_widget("Klausuren", "...")
         self.grafiken_stat = self.create_stat_widget("Grafiken", "...")
         self.schueler_stat = self.create_stat_widget("Schüler", "...")
         
@@ -130,7 +131,7 @@ class DashboardTab(QWidget):
             
             # Statistik-Widgets aktualisieren
             self.aufgaben_stat.value_label.setText(str(stats.get('aufgaben', 0)))
-            self.klausuren_stat.value_label.setText(str(stats.get('klausurvorlagen', 0)))
+            self.klausuren_stat.value_label.setText(str(stats.get('klausuren', 0)))
             self.grafiken_stat.value_label.setText(str(stats.get('grafiken', 0)))
             self.schueler_stat.value_label.setText(str(stats.get('schueler', 0)))
             
@@ -139,39 +140,31 @@ class DashboardTab(QWidget):
             
         except Exception as e:
             print(f"Fehler beim Laden der Dashboard-Daten: {e}")
+            import traceback
+            traceback.print_exc()
             
     def load_recent_klausuren(self):
-        """Letzte Klausuren aus DB laden"""
+        """
+        Letzte Klausuren aus DB laden
+        
+        JETZT AUS DER RICHTIGEN TABELLE: klausuren
+        """
         
         try:
             self.recent_list.clear()
             
-            # Lade letzte 10 Klausuren aus klausuren_alt
-            query = """
-                SELECT 
-                    ka.id,
-                    kv.fach_bezeichnung,
-                    kv.thema,
-                    ka.klasse,
-                    ka.datum,
-                    ka.schuljahr,
-                    s.name as schule
-                FROM klausuren_alt ka
-                JOIN klausurvorlagen kv ON ka.klausur_id = kv.id
-                JOIN schulen s ON ka.schule_id = s.id
-                ORDER BY ka.erstellt_am DESC
-                LIMIT 10
-            """
-            
-            klausuren = self.db.execute_query(query)
+            # Nutze die Methode aus database.py (greift auf 'klausuren' zu!)
+            klausuren = self.db.get_recent_klausuren(limit=10)
             
             if klausuren:
                 for klausur in klausuren:
                     # Format: "Mathematik - Lineare Funktionen (8a, 15.03.2024)"
-                    text = (
-                        f"{klausur['fach_bezeichnung']} - {klausur['thema']} "
-                        f"({klausur['klasse']}, {klausur['datum']})"
-                    )
+                    fach = klausur.get('fach', 'Unbekannt')
+                    titel = klausur.get('titel', 'Ohne Titel')
+                    klasse = klausur.get('klasse', '?')
+                    datum = klausur.get('datum', '?')
+                    
+                    text = f"{fach} - {titel} ({klasse}, {datum})"
                     
                     item = QListWidgetItem(text)
                     item.setData(Qt.ItemDataRole.UserRole, klausur['id'])
@@ -181,7 +174,9 @@ class DashboardTab(QWidget):
                 
         except Exception as e:
             print(f"Fehler beim Laden der Klausuren: {e}")
-            self.recent_list.addItem("Fehler beim Laden der Daten")
+            import traceback
+            traceback.print_exc()
+            self.recent_list.addItem(f"Fehler beim Laden: {e}")
             
     def neue_klausur(self):
         """Neue Klausur erstellen"""
