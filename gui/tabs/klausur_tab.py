@@ -7,6 +7,8 @@ Step 2: Aufgaben auswählen
 Step 3: Anordnung
 Step 4: PDF-Optionen
 Step 5: Generierung
+
+v1.0.7 - Edit-Modus hinzugefügt
 """
 
 from PyQt6.QtWidgets import (
@@ -31,6 +33,10 @@ class KlausurTab(QWidget):
         
         # Klausur-Objekt
         self.klausur = Klausur()
+        
+        # Edit-Modus Flag
+        self.edit_mode = False
+        self.klausur_id = None
         
         # Datenbank
         self.db = get_database()
@@ -104,7 +110,10 @@ class KlausurTab(QWidget):
         if self.current_step < 4:
             self.goto_step(self.current_step + 1)
         else:
-            # Step 5 fertig -> zurück zu Dashboard
+            # Step 5 fertig -> Klausur in DB speichern
+            self.save_klausur_to_db()
+            
+            # Zurück zu Dashboard
             self.reset_wizard()
             if self.main_window:
                 self.main_window.tabs.setCurrentIndex(0)
@@ -117,6 +126,8 @@ class KlausurTab(QWidget):
     def reset_wizard(self):
         """Wizard zurücksetzen"""
         self.klausur = Klausur()
+        self.edit_mode = False
+        self.klausur_id = None
         self.goto_step(0)
         
         # Alle Steps zurücksetzen
@@ -125,6 +136,94 @@ class KlausurTab(QWidget):
         self.step3.reset()
         self.step4.reset()
         self.step5.reset()
+    
+    def load_klausur_for_edit(self, klausur_data):
+        """
+        Klausur für Bearbeitung laden
+        
+        NEU! Für Edit-Modus
+        
+        Args:
+            klausur_data: Dictionary mit Klausur-Daten aus DB
+        """
+        # Edit-Modus aktivieren
+        self.edit_mode = True
+        self.klausur_id = klausur_data.get('id')
+        
+        # Daten ins Klausur-Objekt laden
+        klausur = self.klausur
+        klausur.schule_kuerzel = klausur_data.get('schule', 'gyd')
+        klausur.fach = klausur_data.get('fach', 'Mathematik')
+        klausur.klasse = klausur_data.get('klasse', '')
+        klausur.jahrgangsstufe = klausur_data.get('jahrgangsstufe', 8)
+        klausur.typ = klausur_data.get('typ', 'Klassenarbeit')
+        klausur.datum = klausur_data.get('datum', '')
+        klausur.zeit_minuten = klausur_data.get('zeit_minuten', 45)
+        klausur.thema = klausur_data.get('titel', '')  # titel -> thema
+        
+        # Step 1 UI mit Daten füllen
+        self.step1.load_from_klausur(klausur_data)
+        
+        # Gehe zu Step 1
+        self.goto_step(0)
+        
+        # Info anzeigen
+        QMessageBox.information(
+            self,
+            "Klausur bearbeiten",
+            f"Klausur '{klausur.thema}' wird geladen.\n\n"
+            f"Sie können jetzt die Daten ändern und am Ende speichern."
+        )
+    
+    def save_klausur_to_db(self):
+        """
+        Klausur in DB speichern
+        
+        NEU! Unterscheidet zwischen CREATE und UPDATE
+        """
+        try:
+            klausur = self.klausur
+            
+            # Daten vorbereiten
+            data = {
+                'titel': klausur.thema,
+                'datum': klausur.datum,
+                'fach': klausur.fach,
+                'jahrgangsstufe': klausur.jahrgangsstufe,
+                'typ': klausur.typ,
+                'schule': klausur.schule_kuerzel,
+                'klasse': klausur.klasse,
+                'zeit_minuten': klausur.zeit_minuten,
+                'aufgaben_json': '[]',  # TODO: Aufgaben aus Steps 2-3
+                'seitenumbrueche_json': '[]'  # TODO: Aus Step 3
+            }
+            
+            if self.edit_mode and self.klausur_id:
+                # UPDATE
+                data['id'] = self.klausur_id
+                self.db.update_klausur(data)
+                
+                QMessageBox.information(
+                    self,
+                    "Erfolg",
+                    f"Klausur '{klausur.thema}' wurde aktualisiert!"
+                )
+            else:
+                # CREATE
+                new_id = self.db.create_klausur(data)
+                
+                QMessageBox.information(
+                    self,
+                    "Erfolg",
+                    f"Klausur '{klausur.thema}' wurde erstellt!\n(ID: {new_id})"
+                )
+                
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Fehler",
+                f"Fehler beim Speichern:\n{e}"
+            )
 
 
 class WizardHeader(QFrame):
@@ -203,7 +302,10 @@ class NavigationButtons(QWidget):
         
         # Weiter-Button
         if step_index == 4:
-            self.next_btn.setText("Fertig")
+            if self.parent_tab.edit_mode:
+                self.next_btn.setText("Speichern")
+            else:
+                self.next_btn.setText("Fertig")
         else:
             self.next_btn.setText("Weiter →")
 
@@ -414,6 +516,62 @@ class Step1Setup(QWidget):
             jahrgangsstufe = self.jahrgangsstufe_spin.value()
             self.klasse_combo.clear()
             self.klasse_combo.addItems([f"{jahrgangsstufe}a", f"{jahrgangsstufe}b", f"{jahrgangsstufe}c"])
+    
+    def load_from_klausur(self, klausur_data):
+        """
+        UI mit Klausur-Daten füllen
+        
+        NEU! Für Edit-Modus
+        """
+        # Schule
+        schule_kuerzel = klausur_data.get('schule', 'gyd')
+        index = self.schule_combo.findData(schule_kuerzel)
+        if index >= 0:
+            self.schule_combo.setCurrentIndex(index)
+        
+        # Fach
+        fach = klausur_data.get('fach', 'Mathematik')
+        for button in self.fach_buttons.buttons():
+            if button.text() == fach:
+                button.setChecked(True)
+                break
+        
+        # Jahrgangsstufe
+        jahrgangsstufe = klausur_data.get('jahrgangsstufe', 8)
+        self.jahrgangsstufe_spin.setValue(jahrgangsstufe)
+        
+        # Klasse
+        klasse = klausur_data.get('klasse', '')
+        index = self.klasse_combo.findText(klasse)
+        if index >= 0:
+            self.klasse_combo.setCurrentIndex(index)
+        
+        # Typ
+        typ = klausur_data.get('typ', 'Klassenarbeit')
+        for button in self.typ_buttons.buttons():
+            if button.text() == typ:
+                button.setChecked(True)
+                break
+        
+        # Datum
+        datum_str = klausur_data.get('datum', '')
+        if datum_str:
+            try:
+                datum = QDate.fromString(datum_str, "dd.MM.yyyy")
+                self.datum_edit.setDate(datum)
+            except:
+                pass
+        
+        # Zeit
+        zeit_minuten = klausur_data.get('zeit_minuten', 45)
+        for button in self.zeit_buttons.buttons():
+            if button.property("minuten") == zeit_minuten:
+                button.setChecked(True)
+                break
+        
+        # Thema
+        titel = klausur_data.get('titel', '')
+        self.thema_edit.setText(titel)
     
     def validate(self):
         """Validierung"""
