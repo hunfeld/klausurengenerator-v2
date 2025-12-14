@@ -3,11 +3,12 @@ Aufgaben-Dialog
 ===============
 
 Dialog zum Erstellen und Bearbeiten von Aufgaben
+v1.0.2 - Bugfix für NULL-Werte
 """
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,
-    QTextEdit, QSpinBox, QDialogButtonBox, QMessageBox, QDoubleSpinBox
+    QTextEdit, QSpinBox, QDialogButtonBox, QMessageBox, QDoubleSpinBox, QLabel
 )
 from PyQt6.QtCore import Qt
 
@@ -123,39 +124,42 @@ class AufgabeDialog(QDialog):
     def load_data(self, data):
         """Daten in Dialog laden"""
         
-        self.titel_edit.setText(data.get('titel', ''))
+        self.titel_edit.setText(data.get('titel', '') or '')
         
         if data.get('fach'):
             idx = self.fach_combo.findText(data['fach'])
             if idx >= 0:
                 self.fach_combo.setCurrentIndex(idx)
         
-        self.themengebiet_edit.setText(data.get('themengebiet', ''))
+        self.themengebiet_edit.setText(data.get('themengebiet', '') or '')
         
         if data.get('schwierigkeit'):
             idx = self.schwierigkeit_combo.findText(data['schwierigkeit'])
             if idx >= 0:
                 self.schwierigkeit_combo.setCurrentIndex(idx)
         
-        self.punkte_spin.setValue(data.get('punkte', 10))
+        # BUGFIX: Behandle NULL-Werte aus DB
+        self.punkte_spin.setValue(data.get('punkte') or 10)
         
         if data.get('anforderungsbereich'):
             idx = self.afb_combo.findText(data['anforderungsbereich'])
             if idx >= 0:
                 self.afb_combo.setCurrentIndex(idx)
         
-        self.jahrgangsstufe_spin.setValue(data.get('jahrgangsstufe', 8))
+        # BUGFIX: Behandle NULL-Werte aus DB
+        self.jahrgangsstufe_spin.setValue(data.get('jahrgangsstufe') or 8)
         
         if data.get('schulform'):
             idx = self.schulform_combo.findText(data['schulform'])
             if idx >= 0:
                 self.schulform_combo.setCurrentIndex(idx)
         
-        self.platzbedarf_spin.setValue(data.get('platzbedarf_min', 5.0))
+        # BUGFIX: Behandle NULL-Werte aus DB
+        self.platzbedarf_spin.setValue(data.get('platzbedarf_min') or 5.0)
         
-        self.schlagwoerter_edit.setText(data.get('schlagwoerter', ''))
+        self.schlagwoerter_edit.setText(data.get('schlagwoerter', '') or '')
         
-        self.latex_edit.setPlainText(data.get('latex_code', ''))
+        self.latex_edit.setPlainText(data.get('latex_code', '') or '')
         
     def validate_and_accept(self):
         """Validierung vor Accept"""
@@ -183,8 +187,7 @@ class AufgabeDialog(QDialog):
     def get_data(self):
         """Daten aus Dialog holen"""
         
-        return {
-            'template_id': 1,  # TODO: Template-Auswahl
+        data = {
             'titel': self.titel_edit.text().strip(),
             'fach': self.fach_combo.currentText(),
             'themengebiet': self.themengebiet_edit.text().strip(),
@@ -196,8 +199,10 @@ class AufgabeDialog(QDialog):
             'platzbedarf_min': self.platzbedarf_spin.value(),
             'schlagwoerter': self.schlagwoerter_edit.text().strip(),
             'latex_code': self.latex_edit.toPlainText().strip(),
-            'aufgaben_daten': '{}',  # TODO: JSON-Daten
         }
-
-
-from PyQt6.QtWidgets import QLabel
+        
+        # Falls wir bearbeiten, ID mit übergeben
+        if self.aufgabe_data and 'id' in self.aufgabe_data:
+            data['id'] = self.aufgabe_data['id']
+        
+        return data
