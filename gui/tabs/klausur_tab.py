@@ -8,7 +8,7 @@ Step 3: Anordnung
 Step 4: PDF-Optionen
 Step 5: Generierung
 
-v1.0.10 - Bugfix: Schuljahr-Format "25/26" statt "2025/2026"
+v1.0.11 - Bugfix: blockSignals() während Initialisierung
 """
 
 from PyQt6.QtWidgets import (
@@ -350,7 +350,6 @@ class Step1Setup(QWidget):
         
         self.schule_combo = QComboBox()
         self.schule_combo.currentIndexChanged.connect(self.on_schule_changed)
-        self.load_schulen()
         schule_layout.addRow("Schule:", self.schule_combo)
         
         layout.addWidget(schule_group)
@@ -398,7 +397,6 @@ class Step1Setup(QWidget):
         # Schuljahr
         self.schuljahr_combo = QComboBox()
         self.schuljahr_combo.currentIndexChanged.connect(self.on_schuljahr_changed)
-        self.populate_schuljahre()
         klasse_layout.addRow("Schuljahr:", self.schuljahr_combo)
         
         layout.addWidget(klasse_group)
@@ -480,9 +478,21 @@ class Step1Setup(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(scroll)
         
-        # JETZT ERST am Ende: Klassen + Schuljahr initialisieren
-        self.update_schuljahr_from_datum()  # JETZT sicher, da datum_edit existiert!
+        # JETZT ERST am Ende: Initial-Daten laden
+        # WICHTIG: Signals blocken während Initialisierung!
+        self.schule_combo.blockSignals(True)
+        self.schuljahr_combo.blockSignals(True)
+        self.jahrgangsstufe_spin.blockSignals(True)
+        
+        self.load_schulen()
+        self.populate_schuljahre()
+        self.update_schuljahr_from_datum()
         self.load_klassen()
+        
+        # Signals wieder freigeben
+        self.schule_combo.blockSignals(False)
+        self.schuljahr_combo.blockSignals(False)
+        self.jahrgangsstufe_spin.blockSignals(False)
         
     def populate_schuljahre(self):
         """
@@ -620,6 +630,12 @@ class Step1Setup(QWidget):
         
         NEU! Für Edit-Modus
         """
+        # Signals blocken während Laden
+        self.schule_combo.blockSignals(True)
+        self.schuljahr_combo.blockSignals(True)
+        self.jahrgangsstufe_spin.blockSignals(True)
+        self.datum_edit.blockSignals(True)
+        
         # Schule
         schule_kuerzel = klausur_data.get('schule', 'gyd')
         index = self.schule_combo.findData(schule_kuerzel)
@@ -633,19 +649,24 @@ class Step1Setup(QWidget):
                 button.setChecked(True)
                 break
         
-        # Jahrgangsstufe ZUERST setzen (triggert load_klassen)
+        # Jahrgangsstufe ZUERST setzen
         jahrgangsstufe = klausur_data.get('jahrgangsstufe', 8)
         self.jahrgangsstufe_spin.setValue(jahrgangsstufe)
         
-        # Datum DANN setzen (triggert Schuljahr-Berechnung!)
+        # Datum DANN setzen
         datum_str = klausur_data.get('datum', '')
         if datum_str:
             try:
                 datum = QDate.fromString(datum_str, "dd.MM.yyyy")
                 self.datum_edit.setDate(datum)
-                # update_schuljahr_from_datum wird automatisch aufgerufen!
             except:
                 pass
+        
+        # Schuljahr berechnen
+        self.update_schuljahr_from_datum()
+        
+        # Klassen laden
+        self.load_klassen()
         
         # Klasse setzen (NACH load_klassen!)
         klasse = klausur_data.get('klasse', '')
@@ -675,6 +696,12 @@ class Step1Setup(QWidget):
         # Thema
         titel = klausur_data.get('titel', '')
         self.thema_edit.setText(titel)
+        
+        # Signals wieder freigeben
+        self.schule_combo.blockSignals(False)
+        self.schuljahr_combo.blockSignals(False)
+        self.jahrgangsstufe_spin.blockSignals(False)
+        self.datum_edit.blockSignals(False)
     
     def validate(self):
         """Validierung"""
