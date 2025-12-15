@@ -8,7 +8,7 @@ Step 3: Anordnung
 Step 4: PDF-Optionen
 Step 5: Generierung
 
-v2.0.3 - PNG-Vorschau in Step 2
+v2.0.4 - PNG-Vorschau via LaTeX API (latex.ytotech.com)
 """
 
 from PyQt6.QtWidgets import (
@@ -21,10 +21,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont, QTextOption, QPixmap
 import json
+from pathlib import Path
 
 from core.database import get_database
 from core.models import Klausur, Schule
-from utils.latex_renderer import render_latex_to_png
+from utils.latex_generator import LaTeXGenerator
 
 
 class KlausurTab(QWidget):
@@ -698,11 +699,11 @@ class Step1Setup(QWidget):
 
 
 # ============================================================
-# STEP 2: AUFGABEN AUSWÄHLEN - MIT PNG-PREVIEW!
+# STEP 2: AUFGABEN AUSWÄHLEN - MIT PNG-PREVIEW VIA API!
 # ============================================================
 
 class Step2AufgabenAuswahl(QWidget):
-    """Step 2: Aufgaben aus Pool auswählen - MIT LATEX + PNG PREVIEW!"""
+    """Step 2: Aufgaben aus Pool auswählen - MIT LATEX + PNG PREVIEW VIA API!"""
     
     def __init__(self, parent_tab):
         super().__init__()
@@ -711,6 +712,10 @@ class Step2AufgabenAuswahl(QWidget):
         
         # Ausgewählte Aufgaben (Liste von IDs)
         self.selected_aufgaben_ids = []
+        
+        # LaTeX Generator (API-basiert!)
+        db_path = Path(__file__).parent.parent.parent / 'sus.db'
+        self.latex_gen = LaTeXGenerator(db_path=str(db_path))
         
         self.setup_ui()
         
@@ -812,7 +817,7 @@ class Step2AufgabenAuswahl(QWidget):
         self.latex_text.setMaximumHeight(150)
         detail_layout.addWidget(self.latex_text)
         
-        # PNG-Preview NEU!
+        # PNG-Preview VIA API!
         preview_label = QLabel("🖼️ Vorschau:")
         preview_label.setStyleSheet("font-weight: bold; margin-top: 5px;")
         detail_layout.addWidget(preview_label)
@@ -997,7 +1002,7 @@ class Step2AufgabenAuswahl(QWidget):
         self.render_btn.setEnabled(bool(aufgabe.get('latex_code')))
     
     def render_preview(self):
-        """LaTeX zu PNG rendern - NEU!"""
+        """LaTeX zu PNG rendern via API - NEU!"""
         # Hole aktuelle Aufgabe
         selected_rows = self.aufgaben_table.selectedItems()
         
@@ -1011,20 +1016,29 @@ class Step2AufgabenAuswahl(QWidget):
             aufgabe = self.aufgaben_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
         
         latex_code = aufgabe.get('latex_code', '')
+        aufgabe_id = aufgabe.get('id')
         
         if not latex_code:
             self.preview_label.setText("(Kein LaTeX-Code vorhanden)")
             return
         
         # Rendering läuft
-        self.preview_label.setText("⏳ Rendering läuft...")
+        self.preview_label.setText("⏳ Rendering via API...")
         self.render_btn.setEnabled(False)
         
         try:
-            png_path = render_latex_to_png(latex_code, dpi=150, crop=True)
+            # API-Call: LaTeX → PNG (mit Grafiken!)
+            png_bytes = self.latex_gen.generate_aufgabe_preview_png(
+                aufgabe={'latex_code': latex_code},
+                mit_loesung=False,
+                dpi=150,
+                aufgabe_id=aufgabe_id
+            )
             
-            if png_path:
-                pixmap = QPixmap(png_path)
+            if png_bytes:
+                # Bytes → QPixmap
+                pixmap = QPixmap()
+                pixmap.loadFromData(png_bytes)
                 
                 # Skalieren auf max 600px Breite
                 if pixmap.width() > 600:
@@ -1033,7 +1047,7 @@ class Step2AufgabenAuswahl(QWidget):
                 self.preview_label.setPixmap(pixmap)
                 self.preview_label.setText("")
             else:
-                self.preview_label.setText("❌ Rendering fehlgeschlagen\n(Prüfe LaTeX-Installation)")
+                self.preview_label.setText("❌ Rendering fehlgeschlagen")
                 
         except Exception as e:
             self.preview_label.setText(f"❌ Fehler: {str(e)}")
