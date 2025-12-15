@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 LaTeX Generator für Klausurengenerator
-Version 2.4.3: Mit Grafik-Support via API (Base64-Upload)
+Version 2.4.4: Margin auf 1cm angepasst (identisch zu Klausuren)
 
 FINAL VERSION - Produktiv, ohne Debug-Meldungen
 
@@ -285,7 +285,7 @@ class LaTeXGenerator:
             raise Exception(f"Network Error: {str(e)}")
     
     def get_default_header(self) -> str:
-        """Standard-Header für alle PDFs"""
+        """Standard-Header für alle PDFs (MARGIN = 1cm wie Klausuren!)"""
         return r"""
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
@@ -294,7 +294,7 @@ class LaTeXGenerator:
 \usepackage{qrcode}
 \usepackage{tikz}
 \usepackage{amsmath,amsfonts,amssymb}
-\usepackage[margin=2cm]{geometry}
+\usepackage[margin=1cm]{geometry}
 \usepackage{multicol}
 \usepackage{siunitx}
 \usepackage{ulem}
