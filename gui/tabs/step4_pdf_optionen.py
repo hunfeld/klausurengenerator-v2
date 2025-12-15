@@ -1,20 +1,20 @@
 """
-Step 4: PDF-Optionen
-=====================
+Step 4: PDF-Optionen (VEREINFACHT)
+===================================
 
-Konfiguration für PDF-Generierung
+Nur noch: Musterklausuren ja/nein
+Alles andere wird automatisch entschieden!
 """
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
-    QCheckBox, QComboBox, QFormLayout, QLineEdit, QTextEdit
+    QWidget, QVBoxLayout, QLabel, QGroupBox,
+    QCheckBox, QTextEdit
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QPixmap
+from PyQt6.QtGui import QFont
 
 
 class Step4PDFOptionen(QWidget):
-    """Step 4: PDF-Optionen konfigurieren"""
+    """Step 4: PDF-Optionen - VEREINFACHT"""
     
     def __init__(self, parent_tab):
         super().__init__()
@@ -37,101 +37,69 @@ class Step4PDFOptionen(QWidget):
         layout.addWidget(title)
         
         # Info
-        info = QLabel("Konfigurieren Sie die Optionen für die PDF-Generierung.")
+        info = QLabel(
+            "Konfigurieren Sie die Optionen für den Klassensatz.\n"
+            "Kopfzeile, Running Head und Seitenlogik werden automatisch angewendet."
+        )
+        info.setWordWrap(True)
         layout.addWidget(info)
         
-        # Haupt-Layout
-        main_layout = QHBoxLayout()
+        # Musterklausuren
+        muster_group = QGroupBox("📄 Musterklausuren")
+        muster_layout = QVBoxLayout(muster_group)
         
-        # Links: Optionen
-        left_layout = QVBoxLayout()
-        
-        # Kopf-/Fußzeile
-        header_group = QGroupBox("📄 Kopf- und Fußzeile")
-        header_layout = QVBoxLayout(header_group)
-        
-        self.show_header_check = QCheckBox("Kopfzeile anzeigen (Logo + Infos)")
-        self.show_header_check.setChecked(True)
-        header_layout.addWidget(self.show_header_check)
-        
-        self.show_footer_check = QCheckBox("Fußzeile anzeigen (Seitenzahlen)")
-        self.show_footer_check.setChecked(True)
-        header_layout.addWidget(self.show_footer_check)
-        
-        left_layout.addWidget(header_group)
-        
-        # Lösungen
-        solution_group = QGroupBox("🔍 Lösungen")
-        solution_layout = QVBoxLayout(solution_group)
-        
-        self.generate_solutions_check = QCheckBox("Lösungen generieren (separates PDF)")
-        self.generate_solutions_check.setChecked(False)
-        solution_layout.addWidget(self.generate_solutions_check)
-        
-        left_layout.addWidget(solution_group)
-        
-        # Punkteverteilung
-        points_group = QGroupBox("📊 Punkteverteilung")
-        points_layout = QFormLayout(points_group)
-        
-        self.show_points_check = QCheckBox("Punkte bei Aufgaben anzeigen")
-        self.show_points_check.setChecked(True)
-        points_layout.addRow(self.show_points_check)
-        
-        self.show_total_check = QCheckBox("Gesamtpunktzahl anzeigen")
-        self.show_total_check.setChecked(True)
-        points_layout.addRow(self.show_total_check)
-        
-        left_layout.addWidget(points_group)
-        
-        # QR-Codes
-        qr_group = QGroupBox("🔲 QR-Codes")
-        qr_layout = QVBoxLayout(qr_group)
-        
-        self.generate_qr_check = QCheckBox("QR-Codes für Schüler generieren")
-        self.generate_qr_check.setChecked(True)
-        self.generate_qr_check.setToolTip(
-            "Jeder Schüler erhält einen eindeutigen QR-Code zur Identifikation"
+        self.muster_check = QCheckBox(
+            "Musterklausuren vor dem Klassensatz einfügen"
         )
-        qr_layout.addWidget(self.generate_qr_check)
+        self.muster_check.setChecked(True)
+        self.muster_check.setToolTip(
+            "Fügt vor dem Klassensatz 2 Musterklausuren ein:\n"
+            "1x ohne Lösung (für dich)\n"
+            "1x mit Lösung (für Nachbesprechung)"
+        )
+        muster_layout.addWidget(self.muster_check)
         
-        left_layout.addWidget(qr_group)
+        layout.addWidget(muster_group)
         
-        # Drucker-Optionen
-        print_group = QGroupBox("🖨️ Druck-Optionen")
-        print_layout = QFormLayout(print_group)
+        # Automatische Einstellungen (Info)
+        auto_group = QGroupBox("⚙️ Automatische Einstellungen")
+        auto_layout = QVBoxLayout(auto_group)
         
-        self.duplex_combo = QComboBox()
-        self.duplex_combo.addItems([
-            "Einseitig (simplex)",
-            "Doppelseitig (duplex)",
-            "Doppelseitig mit Reorder (für manuellen Druck)"
-        ])
-        self.duplex_combo.setCurrentIndex(2)  # Duplex mit Reorder als Default
-        print_layout.addRow("Druckmodus:", self.duplex_combo)
+        auto_text = QTextEdit()
+        auto_text.setReadOnly(True)
+        auto_text.setMaximumHeight(200)
+        auto_text.setHtml("""
+        <p>Die folgenden Einstellungen werden <b>automatisch</b> angewendet:</p>
+        <ul>
+        <li><b>Kopfzeile:</b> Immer aktiv (Logo + QR + Infos)</li>
+        <li><b>Running Head:</b> Auf Seiten 2-4</li>
+        <li><b>Seitenlogik:</b>
+            <ul>
+            <li>3 Umbrüche → 4 Seiten → Reorder 4-1-2-3</li>
+            <li>2 Umbrüche → 4 Seiten (+ leere S. 4) → Reorder 4-1-2-3</li>
+            <li>0-1 Umbrüche → 1-2 Seiten → Kein Reorder</li>
+            </ul>
+        </li>
+        <li><b>QR-Codes:</b> Automatisch für jeden Schüler (KaSuSId)</li>
+        <li><b>Ausgabe:</b> Eine einzelne PDF-Datei für den Klassensatz</li>
+        </ul>
+        """)
+        auto_layout.addWidget(auto_text)
         
-        left_layout.addWidget(print_group)
+        layout.addWidget(auto_group)
         
-        left_layout.addStretch()
-        main_layout.addLayout(left_layout, 1)
-        
-        # Rechts: Vorschau/Zusammenfassung
-        right_layout = QVBoxLayout()
-        
+        # Zusammenfassung
         summary_group = QGroupBox("📋 Zusammenfassung")
         summary_layout = QVBoxLayout(summary_group)
         
         self.summary_text = QTextEdit()
         self.summary_text.setReadOnly(True)
-        self.summary_text.setMaximumHeight(300)
+        self.summary_text.setMaximumHeight(200)
         summary_layout.addWidget(self.summary_text)
         
-        right_layout.addWidget(summary_group)
-        right_layout.addStretch()
+        layout.addWidget(summary_group)
         
-        main_layout.addLayout(right_layout, 1)
-        
-        layout.addLayout(main_layout)
+        layout.addStretch()
         
     def on_enter(self):
         """Wird aufgerufen wenn Step 4 betreten wird"""
@@ -141,10 +109,10 @@ class Step4PDFOptionen(QWidget):
         """Zusammenfassung aktualisieren"""
         klausur = self.parent_tab.klausur
         
-        # Hole Aufgaben-Infos
+        # Anzahl Aufgaben
         anzahl_aufgaben = len(klausur.aufgaben_ids) if hasattr(klausur, 'aufgaben_ids') else 0
         
-        # Berechne Gesamtpunkte
+        # Gesamtpunkte
         total_punkte = 0
         if hasattr(klausur, 'aufgaben_ids'):
             db = self.parent_tab.db
@@ -153,7 +121,20 @@ class Step4PDFOptionen(QWidget):
                 if aufgabe:
                     total_punkte += aufgabe.get('punkte', 0) or 0
         
-        # Hole Schüleranzahl
+        # Seitenumbrüche
+        page_breaks = len(klausur.page_breaks) if hasattr(klausur, 'page_breaks') else 0
+        seiten = page_breaks + 1
+        
+        # Reorder-Logik
+        if page_breaks >= 2:
+            if page_breaks == 2:
+                reorder_info = "4 Seiten (+ leere S. 4) → Reorder 4-1-2-3"
+            else:  # >= 3
+                reorder_info = f"{seiten} Seiten → Reorder 4-1-2-3"
+        else:
+            reorder_info = f"{seiten} Seite(n) → Kein Reorder"
+        
+        # Schüleranzahl
         try:
             db = self.parent_tab.db
             schueler_count = db.get_schueler_count_by_klasse(
@@ -164,20 +145,24 @@ class Step4PDFOptionen(QWidget):
         except:
             schueler_count = 0
         
+        # Musterklausuren
+        muster_text = "Ja (2 Klausuren)" if self.muster_check.isChecked() else "Nein"
+        
         summary_html = f"""
         <h3>📄 {klausur.thema}</h3>
-        <p><b>Schule:</b> {klausur.schule_kuerzel.upper()}<br>
-        <b>Klasse:</b> {klausur.klasse}<br>
-        <b>Fach:</b> {klausur.fach}<br>
-        <b>Typ:</b> {klausur.typ}<br>
-        <b>Datum:</b> {klausur.datum}<br>
-        <b>Dauer:</b> {klausur.zeit_minuten} Minuten</p>
+        <p><b>Klasse:</b> {klausur.klasse} ({klausur.schule_kuerzel.upper()})<br>
+        <b>Fach:</b> {klausur.fach} | <b>Typ:</b> {klausur.typ}<br>
+        <b>Datum:</b> {klausur.datum} | <b>Dauer:</b> {klausur.zeit_minuten} Min</p>
         
         <p><b>Aufgaben:</b> {anzahl_aufgaben}<br>
         <b>Gesamtpunkte:</b> {total_punkte}<br>
-        <b>Schüler:</b> {schueler_count}</p>
+        <b>Seitenumbrüche:</b> {page_breaks}<br>
+        <b>→ Seitenlogik:</b> {reorder_info}</p>
         
-        <p><b>→ PDFs werden generiert:</b> {schueler_count} Klassensatz-PDFs</p>
+        <p><b>Schüler:</b> {schueler_count}<br>
+        <b>Musterklausuren:</b> {muster_text}</p>
+        
+        <p><b>→ Ausgabe:</b> 1 PDF-Datei (Klassensatz)</p>
         """
         
         self.summary_text.setHtml(summary_html)
@@ -190,26 +175,14 @@ class Step4PDFOptionen(QWidget):
         """Daten speichern"""
         klausur = self.parent_tab.klausur
         
-        # Speichere PDF-Optionen
+        # Speichere nur Musterklausuren-Option
         klausur.pdf_options = {
-            'show_header': self.show_header_check.isChecked(),
-            'show_footer': self.show_footer_check.isChecked(),
-            'generate_solutions': self.generate_solutions_check.isChecked(),
-            'show_points': self.show_points_check.isChecked(),
-            'show_total': self.show_total_check.isChecked(),
-            'generate_qr': self.generate_qr_check.isChecked(),
-            'duplex_mode': self.duplex_combo.currentIndex()
+            'musterklausuren': self.muster_check.isChecked()
         }
         
-        print(f"Step 4 gespeichert: PDF-Optionen konfiguriert")
+        print(f"Step 4 gespeichert: Musterklausuren={self.muster_check.isChecked()}")
         
     def reset(self):
         """Zurücksetzen"""
-        self.show_header_check.setChecked(True)
-        self.show_footer_check.setChecked(True)
-        self.generate_solutions_check.setChecked(False)
-        self.show_points_check.setChecked(True)
-        self.show_total_check.setChecked(True)
-        self.generate_qr_check.setChecked(True)
-        self.duplex_combo.setCurrentIndex(2)
+        self.muster_check.setChecked(True)
         self.summary_text.clear()
