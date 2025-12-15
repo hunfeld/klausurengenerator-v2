@@ -2,7 +2,7 @@
 Datenbank-Verwaltung
 ====================
 
-SQLite-Anbindung für sus.db - v1.0.7 Erweiterte Aufgaben-Filter
+SQLite-Anbindung für sus.db - v1.0.8 Mit get_all_grafiken()
 """
 
 import sqlite3
@@ -547,6 +547,27 @@ class Database:
     # ============================================================
     # GRAFIKEN
     # ============================================================
+    
+    def get_all_grafiken(self) -> List[Dict[str, Any]]:
+        """Alle Grafiken aus aufgaben_grafiken Tabelle laden"""
+        return self.execute_query(
+            """
+            SELECT 
+                id,
+                aufgabe_id,
+                latex_name,
+                dateiname,
+                dateityp,
+                grafik_blob,
+                breite_px,
+                hoehe_px,
+                groesse_bytes,
+                quelle,
+                erstellt_am
+            FROM aufgaben_grafiken 
+            ORDER BY erstellt_am DESC
+            """
+        )
     
     def get_grafiken(self) -> List[Dict[str, Any]]:
         """Alle Grafiken laden (Alias für get_grafiken_pool)"""
