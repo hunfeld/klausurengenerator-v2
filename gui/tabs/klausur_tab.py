@@ -27,6 +27,9 @@ from core.database import get_database
 from core.models import Klausur, Schule
 from utils.latex_generator import LaTeXGenerator
 
+from gui.tabs.step3_anordnung import Step3Anordnung
+from gui.tabs.step4_pdf_optionen import Step4PDFOptionen
+from gui.tabs.step5_generierung import Step5Generierung
 
 class KlausurTab(QWidget):
     """Klausur-Erstellung mit 5-Step-Wizard"""
@@ -1222,46 +1225,3 @@ class Step2AufgabenAuswahl(QWidget):
         self.preview_label.clear()
         self.preview_label.setText("(Keine Vorschau)")
         self.update_count()
-
-
-# ============================================================
-# STEP 3-5: Platzhalter (werden später implementiert)
-# ============================================================
-
-class Step3Anordnung(QWidget):
-    def __init__(self, parent_tab):
-        super().__init__()
-        self.parent_tab = parent_tab
-        layout = QVBoxLayout(self)
-        label = QLabel("🚧 Step 3: Wird implementiert...")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
-    def validate(self): return True
-    def save_data(self): pass
-    def reset(self): pass
-
-
-class Step4PDFOptionen(QWidget):
-    def __init__(self, parent_tab):
-        super().__init__()
-        self.parent_tab = parent_tab
-        layout = QVBoxLayout(self)
-        label = QLabel("🚧 Step 4: Wird implementiert...")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
-    def validate(self): return True
-    def save_data(self): pass
-    def reset(self): pass
-
-
-class Step5Generierung(QWidget):
-    def __init__(self, parent_tab):
-        super().__init__()
-        self.parent_tab = parent_tab
-        layout = QVBoxLayout(self)
-        label = QLabel("🚧 Step 5: Wird implementiert...")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
-    def validate(self): return True
-    def save_data(self): pass
-    def reset(self): pass
