@@ -1,8 +1,11 @@
 """
-Step 5: PDF-Generierung mit Schülerauswahl
-============================================
+Step 5: PDF-Generierung mit ECHTER Klassensatz-Generierung
+============================================================
 
-Mit individueller Schülerauswahl für Nachschreiber-Szenarien!
+Generiert EINE PDF-Datei für den Klassensatz mit:
+- Optional: 2 Musterklausuren (ohne + mit Lösung)
+- Alle ausgewählten Schüler-Klausuren
+- Automatische Seitenlogik (Reorder 4-1-2-3 wenn nötig)
 """
 
 from PyQt6.QtWidgets import (
@@ -10,9 +13,80 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QProgressBar, QTextEdit,
     QMessageBox, QGroupBox, QCheckBox
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl
+from PyQt6.QtGui import QFont, QDesktopServices
+from pathlib import Path
 import json
+from datetime import datetime
+
+
+class PDFGeneratorThread(QThread):
+    """Background-Thread für PDF-Generierung"""
+    
+    progress = pyqtSignal(int, str)  # (value, message)
+    finished = pyqtSignal(bool, str, str)  # (success, message, filepath)
+    
+    def __init__(self, klausur, selected_schueler, musterklausuren, db, latex_gen):
+        super().__init__()
+        self.klausur = klausur
+        self.selected_schueler = selected_schueler
+        self.musterklausuren = musterklausuren
+        self.db = db
+        self.latex_gen = latex_gen
+        
+    def run(self):
+        """PDF-Generierung ausführen"""
+        try:
+            # Ausgabeverzeichnis erstellen
+            output_dir = Path('outputs')
+            output_dir.mkdir(exist_ok=True)
+            
+            # Dateiname generieren
+            datum_str = self.klausur.datum.replace('.', '-')
+            filename = f"{datum_str}_{self.klausur.klasse}_{self.klausur.thema.replace(' ', '_')}_Klassensatz.pdf"
+            output_path = output_dir / filename
+            
+            self.progress.emit(10, "Lade Aufgaben aus DB...")
+            
+            # Aufgaben laden
+            aufgaben = []
+            for aufgabe_id in self.klausur.aufgaben_ids:
+                aufgabe = self.db.get_aufgabe_by_id(aufgabe_id)
+                if aufgabe:
+                    aufgaben.append(aufgabe)
+            
+            if not aufgaben:
+                self.finished.emit(False, "Keine Aufgaben gefunden!", "")
+                return
+            
+            self.progress.emit(30, "Generiere LaTeX-Code...")
+            
+            # LaTeX Generator aufrufen
+            pdf_bytes = self.latex_gen.generate_klassensatz(
+                klausur=self.klausur,
+                aufgaben=aufgaben,
+                schueler_list=self.selected_schueler,
+                mit_musterklausuren=self.musterklausuren,
+                progress_callback=lambda p, msg: self.progress.emit(p, msg)
+            )
+            
+            if not pdf_bytes:
+                self.finished.emit(False, "PDF-Generierung fehlgeschlagen!", "")
+                return
+            
+            self.progress.emit(90, "Speichere PDF...")
+            
+            # PDF speichern
+            with open(output_path, 'wb') as f:
+                f.write(pdf_bytes)
+            
+            self.progress.emit(100, "Fertig!")
+            self.finished.emit(True, f"Klassensatz erfolgreich erstellt!", str(output_path))
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.finished.emit(False, f"Fehler: {str(e)}", "")
 
 
 class Step5Generierung(QWidget):
@@ -21,8 +95,10 @@ class Step5Generierung(QWidget):
     def __init__(self, parent_tab):
         super().__init__()
         self.parent_tab = parent_tab
-        self.schueler_list = []  # Liste aller Schüler
-        self.selected_schueler = []  # Ausgewählte Schüler
+        self.schueler_list = []
+        self.selected_schueler = []
+        self.generator_thread = None
+        self.output_filepath = None
         self.setup_ui()
         
     def setup_ui(self):
@@ -42,7 +118,7 @@ class Step5Generierung(QWidget):
         
         # Info
         info = QLabel(
-            "Wählen Sie die Schüler aus, für die PDFs generiert werden sollen.\n"
+            "Wählen Sie die Schüler aus, für die der Klassensatz generiert werden soll.\n"
             "💡 Tipp: Mit 'Auswahl umkehren' können Sie schnell nur Nachschreiber auswählen!"
         )
         info.setWordWrap(True)
@@ -109,7 +185,7 @@ class Step5Generierung(QWidget):
         progress_layout.addWidget(self.status_text)
         
         # Generate-Button
-        self.generate_btn = QPushButton("📄 PDFs generieren")
+        self.generate_btn = QPushButton("📄 Klassensatz generieren")
         self.generate_btn.setMinimumHeight(50)
         self.generate_btn.setStyleSheet("font-size: 14pt; font-weight: bold;")
         self.generate_btn.clicked.connect(self.start_generation)
@@ -117,14 +193,20 @@ class Step5Generierung(QWidget):
         
         right_layout.addWidget(progress_group)
         
-        # Download-Links
-        download_group = QGroupBox("📥 Downloads")
+        # Download-Bereich
+        download_group = QGroupBox("📥 Ausgabe")
         download_layout = QVBoxLayout(download_group)
         
         self.download_text = QTextEdit()
         self.download_text.setReadOnly(True)
-        self.download_text.setMaximumHeight(150)
+        self.download_text.setMaximumHeight(100)
         download_layout.addWidget(self.download_text)
+        
+        # Ordner öffnen Button
+        self.open_folder_btn = QPushButton("📁 Ordner öffnen")
+        self.open_folder_btn.setVisible(False)
+        self.open_folder_btn.clicked.connect(self.open_output_folder)
+        download_layout.addWidget(self.open_folder_btn)
         
         right_layout.addWidget(download_group)
         
@@ -143,7 +225,6 @@ class Step5Generierung(QWidget):
         db = self.parent_tab.db
         
         try:
-            # Lade Schüler der Klasse
             schueler = db.get_schueler_by_klasse(
                 klausur.schuljahr,
                 klausur.schule_kuerzel,
@@ -153,14 +234,12 @@ class Step5Generierung(QWidget):
             self.schueler_list = schueler
             self.schueler_list_widget.clear()
             
-            # Füge Schüler als Checkboxen hinzu
             for s in schueler:
                 item = QListWidgetItem()
                 checkbox = QCheckBox(f"{s['nachname']}, {s['rufname']}")
-                checkbox.setChecked(True)  # Standard: alle ausgewählt
+                checkbox.setChecked(True)
                 checkbox.stateChanged.connect(self.update_stats)
                 
-                # Speichere Schüler-Daten
                 item.setData(Qt.ItemDataRole.UserRole, {
                     'schueler': s,
                     'checkbox': checkbox
@@ -169,7 +248,6 @@ class Step5Generierung(QWidget):
                 self.schueler_list_widget.addItem(item)
                 self.schueler_list_widget.setItemWidget(item, checkbox)
             
-            # Initial alle ausgewählt
             self.selected_schueler = schueler.copy()
             self.update_stats()
             
@@ -179,7 +257,6 @@ class Step5Generierung(QWidget):
                 "Fehler",
                 f"Fehler beim Laden der Schüler:\n{e}"
             )
-            print(f"Fehler beim Laden der Schüler: {e}")
             
     def select_all(self):
         """Alle Schüler auswählen"""
@@ -202,7 +279,7 @@ class Step5Generierung(QWidget):
         self.update_stats()
         
     def invert_selection(self):
-        """Auswahl umkehren - perfekt für Nachschreiber!"""
+        """Auswahl umkehren"""
         for i in range(self.schueler_list_widget.count()):
             item = self.schueler_list_widget.item(i)
             data = item.data(Qt.ItemDataRole.UserRole)
@@ -224,15 +301,21 @@ class Step5Generierung(QWidget):
                 count += 1
         
         total = len(self.schueler_list)
+        
+        # Berücksichtige Musterklausuren
+        klausur = self.parent_tab.klausur
+        muster = 2 if (hasattr(klausur, 'pdf_options') and klausur.pdf_options.get('musterklausuren', True)) else 0
+        
         self.stats_label.setText(
-            f"✅ {count} von {total} Schülern ausgewählt → {count} PDFs werden generiert"
+            f"✅ {count} von {total} Schülern ausgewählt\n"
+            f"→ {muster + count} Klausuren im Klassensatz"
         )
         
     def update_status_initial(self):
         """Initial-Status anzeigen"""
         klausur = self.parent_tab.klausur
         
-        # Berechne Gesamtpunkte
+        # Gesamtpunkte
         total_punkte = 0
         if hasattr(klausur, 'aufgaben_ids'):
             db = self.parent_tab.db
@@ -241,14 +324,18 @@ class Step5Generierung(QWidget):
                 if aufgabe:
                     total_punkte += aufgabe.get('punkte', 0) or 0
         
+        # Seitenumbrüche
+        page_breaks = len(klausur.page_breaks) if hasattr(klausur, 'page_breaks') else 0
+        
         status_html = f"""
         <h3>📋 Bereit zur Generierung</h3>
         <p><b>Klausur:</b> {klausur.thema}<br>
         <b>Klasse:</b> {klausur.klasse}<br>
         <b>Aufgaben:</b> {len(klausur.aufgaben_ids) if hasattr(klausur, 'aufgaben_ids') else 0}<br>
-        <b>Gesamtpunkte:</b> {total_punkte}</p>
+        <b>Gesamtpunkte:</b> {total_punkte}<br>
+        <b>Seitenumbrüche:</b> {page_breaks}</p>
         
-        <p>Wählen Sie die Schüler aus und klicken Sie auf "PDFs generieren".</p>
+        <p>Wählen Sie die Schüler aus und klicken Sie auf "Klassensatz generieren".</p>
         """
         
         self.status_text.setHtml(status_html)
@@ -275,90 +362,126 @@ class Step5Generierung(QWidget):
             )
             return
         
+        # Musterklausuren?
+        klausur = self.parent_tab.klausur
+        musterklausuren = klausur.pdf_options.get('musterklausuren', True) if hasattr(klausur, 'pdf_options') else True
+        
         # Bestätigung
+        muster_text = "2 Musterklausuren + " if musterklausuren else ""
         reply = QMessageBox.question(
             self,
             "Generierung starten?",
-            f"Es werden {len(selected)} PDFs generiert.\n\nFortfahren?",
+            f"Es wird ein Klassensatz generiert:\n"
+            f"{muster_text}{len(selected)} Schüler-Klausuren\n\n"
+            f"→ Eine einzelne PDF-Datei\n\n"
+            f"Fortfahren?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
         if reply != QMessageBox.StandardButton.Yes:
             return
         
-        # Generierung starten
+        # UI vorbereiten
         self.generate_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, len(selected))
+        self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.open_folder_btn.setVisible(False)
+        self.download_text.clear()
         
         # Status
         self.status_text.setHtml(
-            f"<p>⏳ Generiere {len(selected)} PDFs...</p>"
+            f"<p>⏳ Generiere Klassensatz...</p>"
         )
         
-        # TODO: Hier später echte PDF-Generierung einbauen
-        # Für jetzt: Simuliere Generierung
-        self.simulate_generation(selected)
+        # LaTeX Generator vorbereiten
+        from utils.latex_generator import LaTeXGenerator
+        db_path = Path(__file__).parent.parent.parent / 'database' / 'sus.db'
+        latex_gen = LaTeXGenerator(db_path=str(db_path))
         
-    def simulate_generation(self, selected_schueler):
-        """Simuliere PDF-Generierung (Platzhalter)"""
-        import time
+        # Thread starten
+        self.generator_thread = PDFGeneratorThread(
+            klausur=klausur,
+            selected_schueler=selected,
+            musterklausuren=musterklausuren,
+            db=self.parent_tab.db,
+            latex_gen=latex_gen
+        )
         
-        generated_files = []
+        self.generator_thread.progress.connect(self.on_progress)
+        self.generator_thread.finished.connect(self.on_finished)
+        self.generator_thread.start()
         
-        for i, schueler in enumerate(selected_schueler):
-            # Simuliere Arbeit
-            time.sleep(0.1)
-            
-            # Update Progress
-            self.progress_bar.setValue(i + 1)
-            
-            # Simuliere generierten Dateinamen
-            filename = f"KA_{schueler['klasse']}_{schueler['nachname']}_{schueler['rufname']}.pdf"
-            generated_files.append(filename)
+    def on_progress(self, value, message):
+        """Progress-Update"""
+        self.progress_bar.setValue(value)
         
-        # Fertig
+        current_html = self.status_text.toHtml()
+        self.status_text.setHtml(
+            current_html + f"<p>{message}</p>"
+        )
+        
+    def on_finished(self, success, message, filepath):
+        """Generierung abgeschlossen"""
         self.progress_bar.setVisible(False)
         self.generate_btn.setEnabled(True)
         
-        # Status
-        status_html = f"""
-        <h3>✅ Generierung abgeschlossen!</h3>
-        <p>{len(selected_schueler)} PDFs wurden erfolgreich generiert.</p>
-        """
-        self.status_text.setHtml(status_html)
+        if success:
+            self.output_filepath = filepath
+            
+            # Status
+            status_html = f"""
+            <h3>✅ Klassensatz erfolgreich generiert!</h3>
+            <p>{message}</p>
+            """
+            self.status_text.setHtml(status_html)
+            
+            # Download-Link
+            filename = Path(filepath).name
+            download_html = f"""
+            <p><b>📄 Datei:</b> {filename}</p>
+            <p><b>📁 Pfad:</b> {filepath}</p>
+            """
+            self.download_text.setHtml(download_html)
+            
+            # Ordner-Button
+            self.open_folder_btn.setVisible(True)
+            
+            # Info
+            QMessageBox.information(
+                self,
+                "Fertig!",
+                f"Klassensatz wurde erfolgreich generiert!\n\n"
+                f"Datei: {filename}\n\n"
+                f"Sie können den Ordner jetzt öffnen."
+            )
+        else:
+            # Fehler
+            status_html = f"""
+            <h3>❌ Fehler bei der Generierung</h3>
+            <p>{message}</p>
+            """
+            self.status_text.setHtml(status_html)
+            
+            QMessageBox.critical(
+                self,
+                "Fehler",
+                f"Fehler bei der PDF-Generierung:\n\n{message}"
+            )
         
-        # Download-Links
-        download_html = "<h4>📥 Generierte Dateien:</h4><ul>"
-        for filename in generated_files[:5]:  # Zeige max 5
-            download_html += f"<li>{filename}</li>"
-        
-        if len(generated_files) > 5:
-            download_html += f"<li><i>... und {len(generated_files) - 5} weitere</i></li>"
-        
-        download_html += "</ul>"
-        download_html += f"<p><b>Ausgabeverzeichnis:</b> outputs/</p>"
-        
-        self.download_text.setHtml(download_html)
-        
-        # Info
-        QMessageBox.information(
-            self,
-            "Fertig",
-            f"{len(selected_schueler)} PDFs wurden generiert!\n\n"
-            f"Sie finden die Dateien im Ordner 'outputs/'."
-        )
+    def open_output_folder(self):
+        """Ausgabe-Ordner öffnen"""
+        if self.output_filepath:
+            folder = Path(self.output_filepath).parent
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
         
     def validate(self):
         """Validierung"""
-        # In Step 5 gibt es keine Pflichtfelder
         return True
         
     def save_data(self):
         """Daten speichern"""
-        # In Step 5 wird direkt generiert, kein Speichern nötig
-        print("Step 5: PDFs generiert")
+        print("Step 5: Klassensatz generiert")
         
     def reset(self):
         """Zurücksetzen"""
@@ -370,3 +493,5 @@ class Step5Generierung(QWidget):
         self.download_text.clear()
         self.progress_bar.setVisible(False)
         self.progress_bar.setValue(0)
+        self.open_folder_btn.setVisible(False)
+        self.output_filepath = None
