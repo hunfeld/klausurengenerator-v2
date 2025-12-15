@@ -2,33 +2,31 @@
 Step 4: PDF-Optionen
 =====================
 
-Auswahl welche PDFs generiert werden sollen
+Konfiguration für PDF-Generierung
 """
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QCheckBox, QGroupBox, QComboBox, QMessageBox, QTextEdit
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
+    QCheckBox, QComboBox, QFormLayout, QLineEdit, QTextEdit
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
-
-from core.database import get_database
+from PyQt6.QtGui import QFont, QPixmap
 
 
 class Step4PDFOptionen(QWidget):
-    """Step 4: PDF-Optionen auswählen"""
+    """Step 4: PDF-Optionen konfigurieren"""
     
     def __init__(self, parent_tab):
         super().__init__()
         self.parent_tab = parent_tab
-        self.db = get_database()
         self.setup_ui()
         
     def setup_ui(self):
         """UI aufbauen"""
         
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(40, 20, 40, 20)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(40, 20, 40, 20)
+        layout.setSpacing(20)
         
         # Titel
         title = QLabel("Schritt 4/5: PDF-Optionen")
@@ -36,259 +34,182 @@ class Step4PDFOptionen(QWidget):
         title_font.setPointSize(16)
         title_font.setBold(True)
         title.setFont(title_font)
-        main_layout.addWidget(title)
+        layout.addWidget(title)
         
-        info_label = QLabel(
-            "Wählen Sie aus, welche PDF-Varianten generiert werden sollen."
+        # Info
+        info = QLabel("Konfigurieren Sie die Optionen für die PDF-Generierung.")
+        layout.addWidget(info)
+        
+        # Haupt-Layout
+        main_layout = QHBoxLayout()
+        
+        # Links: Optionen
+        left_layout = QVBoxLayout()
+        
+        # Kopf-/Fußzeile
+        header_group = QGroupBox("📄 Kopf- und Fußzeile")
+        header_layout = QVBoxLayout(header_group)
+        
+        self.show_header_check = QCheckBox("Kopfzeile anzeigen (Logo + Infos)")
+        self.show_header_check.setChecked(True)
+        header_layout.addWidget(self.show_header_check)
+        
+        self.show_footer_check = QCheckBox("Fußzeile anzeigen (Seitenzahlen)")
+        self.show_footer_check.setChecked(True)
+        header_layout.addWidget(self.show_footer_check)
+        
+        left_layout.addWidget(header_group)
+        
+        # Lösungen
+        solution_group = QGroupBox("🔍 Lösungen")
+        solution_layout = QVBoxLayout(solution_group)
+        
+        self.generate_solutions_check = QCheckBox("Lösungen generieren (separates PDF)")
+        self.generate_solutions_check.setChecked(False)
+        solution_layout.addWidget(self.generate_solutions_check)
+        
+        left_layout.addWidget(solution_group)
+        
+        # Punkteverteilung
+        points_group = QGroupBox("📊 Punkteverteilung")
+        points_layout = QFormLayout(points_group)
+        
+        self.show_points_check = QCheckBox("Punkte bei Aufgaben anzeigen")
+        self.show_points_check.setChecked(True)
+        points_layout.addRow(self.show_points_check)
+        
+        self.show_total_check = QCheckBox("Gesamtpunktzahl anzeigen")
+        self.show_total_check.setChecked(True)
+        points_layout.addRow(self.show_total_check)
+        
+        left_layout.addWidget(points_group)
+        
+        # QR-Codes
+        qr_group = QGroupBox("🔲 QR-Codes")
+        qr_layout = QVBoxLayout(qr_group)
+        
+        self.generate_qr_check = QCheckBox("QR-Codes für Schüler generieren")
+        self.generate_qr_check.setChecked(True)
+        self.generate_qr_check.setToolTip(
+            "Jeder Schüler erhält einen eindeutigen QR-Code zur Identifikation"
         )
-        info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #666; margin: 10px 0;")
-        main_layout.addWidget(info_label)
+        qr_layout.addWidget(self.generate_qr_check)
         
-        # Optionen
-        optionen_group = QGroupBox("Was soll generiert werden?")
-        optionen_layout = QVBoxLayout(optionen_group)
+        left_layout.addWidget(qr_group)
         
-        self.muster_ohne_cb = QCheckBox("Muster ohne Lösung (1 Exemplar)")
-        self.muster_ohne_cb.setChecked(True)
-        self.muster_ohne_cb.stateChanged.connect(self.update_preview)
-        optionen_layout.addWidget(self.muster_ohne_cb)
+        # Drucker-Optionen
+        print_group = QGroupBox("🖨️ Druck-Optionen")
+        print_layout = QFormLayout(print_group)
         
-        self.muster_mit_cb = QCheckBox("Muster mit Lösung (1 Exemplar)")
-        self.muster_mit_cb.setChecked(True)
-        self.muster_mit_cb.stateChanged.connect(self.update_preview)
-        optionen_layout.addWidget(self.muster_mit_cb)
+        self.duplex_combo = QComboBox()
+        self.duplex_combo.addItems([
+            "Einseitig (simplex)",
+            "Doppelseitig (duplex)",
+            "Doppelseitig mit Reorder (für manuellen Druck)"
+        ])
+        self.duplex_combo.setCurrentIndex(2)  # Duplex mit Reorder als Default
+        print_layout.addRow("Druckmodus:", self.duplex_combo)
         
-        self.klassensatz_ohne_cb = QCheckBox("Klassensatz ohne Lösung (personalisiert)")
-        self.klassensatz_ohne_cb.setChecked(True)
-        self.klassensatz_ohne_cb.stateChanged.connect(self.on_klassensatz_changed)
-        optionen_layout.addWidget(self.klassensatz_ohne_cb)
+        left_layout.addWidget(print_group)
         
-        self.klassensatz_mit_cb = QCheckBox("Klassensatz mit Lösung (personalisiert)")
-        self.klassensatz_mit_cb.setChecked(False)
-        self.klassensatz_mit_cb.stateChanged.connect(self.on_klassensatz_changed)
-        optionen_layout.addWidget(self.klassensatz_mit_cb)
+        left_layout.addStretch()
+        main_layout.addLayout(left_layout, 1)
         
-        main_layout.addWidget(optionen_group)
+        # Rechts: Vorschau/Zusammenfassung
+        right_layout = QVBoxLayout()
         
-        # Klassen-Auswahl (nur wenn Klassensatz)
-        klasse_group = QGroupBox("Klassensatz-Optionen")
-        klasse_layout = QVBoxLayout(klasse_group)
+        summary_group = QGroupBox("📋 Zusammenfassung")
+        summary_layout = QVBoxLayout(summary_group)
         
-        klasse_info = QHBoxLayout()
-        klasse_info.addWidget(QLabel("Klasse:"))
+        self.summary_text = QTextEdit()
+        self.summary_text.setReadOnly(True)
+        self.summary_text.setMaximumHeight(300)
+        summary_layout.addWidget(self.summary_text)
         
-        self.klasse_label = QLabel()
-        self.klasse_label.setStyleSheet("font-weight: bold;")
-        klasse_info.addWidget(self.klasse_label)
+        right_layout.addWidget(summary_group)
+        right_layout.addStretch()
         
-        klasse_info.addStretch()
+        main_layout.addLayout(right_layout, 1)
         
-        klasse_info.addWidget(QLabel("Schuljahr:"))
-        self.schuljahr_combo = QComboBox()
-        self.schuljahr_combo.addItems(["2024/2025", "2025/2026"])
-        self.schuljahr_combo.currentTextChanged.connect(self.load_schueler)
-        klasse_info.addWidget(self.schuljahr_combo)
-        
-        klasse_layout.addLayout(klasse_info)
-        
-        schueler_layout = QHBoxLayout()
-        schueler_layout.addWidget(QLabel("Schüler:"))
-        
-        self.schueler_count_label = QLabel()
-        self.schueler_count_label.setStyleSheet("font-weight: bold;")
-        schueler_layout.addWidget(self.schueler_count_label)
-        
-        schueler_layout.addStretch()
-        
-        reload_btn = QPushButton("🔄 Neu laden")
-        reload_btn.clicked.connect(self.load_schueler)
-        schueler_layout.addWidget(reload_btn)
-        
-        klasse_layout.addLayout(schueler_layout)
-        
-        self.klasse_group = klasse_group
-        main_layout.addWidget(klasse_group)
-        
-        # Vorschau
-        preview_group = QGroupBox("Vorschau")
-        preview_layout = QVBoxLayout(preview_group)
-        
-        self.preview_text = QTextEdit()
-        self.preview_text.setReadOnly(True)
-        self.preview_text.setMaximumHeight(150)
-        preview_layout.addWidget(self.preview_text)
-        
-        main_layout.addWidget(preview_group)
-        
-        main_layout.addStretch()
+        layout.addLayout(main_layout)
         
     def on_enter(self):
-        """Wird aufgerufen wenn Step betreten wird"""
+        """Wird aufgerufen wenn Step 4 betreten wird"""
+        self.update_summary()
+        
+    def update_summary(self):
+        """Zusammenfassung aktualisieren"""
         klausur = self.parent_tab.klausur
         
-        # Klasse anzeigen
-        self.klasse_label.setText(f"{klausur.klasse} ({klausur.schule_kuerzel})")
+        # Hole Aufgaben-Infos
+        anzahl_aufgaben = len(klausur.aufgaben_ids) if hasattr(klausur, 'aufgaben_ids') else 0
         
-        # Schuljahr setzen
-        idx = self.schuljahr_combo.findText(klausur.schuljahr)
-        if idx >= 0:
-            self.schuljahr_combo.setCurrentIndex(idx)
+        # Berechne Gesamtpunkte
+        total_punkte = 0
+        if hasattr(klausur, 'aufgaben_ids'):
+            db = self.parent_tab.db
+            for aufgabe_id in klausur.aufgaben_ids:
+                aufgabe = db.get_aufgabe_by_id(aufgabe_id)
+                if aufgabe:
+                    total_punkte += aufgabe.get('punkte', 0) or 0
         
-        # Schüler laden
-        self.load_schueler()
-        
-        # Preview aktualisieren
-        self.update_preview()
-        
-    def on_klassensatz_changed(self):
-        """Klassensatz-Checkbox wurde geändert"""
-        klassensatz_gewuenscht = (
-            self.klassensatz_ohne_cb.isChecked() or 
-            self.klassensatz_mit_cb.isChecked()
-        )
-        
-        self.klasse_group.setEnabled(klassensatz_gewuenscht)
-        
-        if klassensatz_gewuenscht:
-            self.load_schueler()
-        
-        self.update_preview()
-        
-    def load_schueler(self):
-        """Schüler aus Datenbank laden"""
+        # Hole Schüleranzahl
         try:
-            klausur = self.parent_tab.klausur
-            schuljahr = self.schuljahr_combo.currentText()
-            
-            # Schüler laden
-            schueler_data = self.db.get_schueler_by_klasse(
-                schuljahr=schuljahr,
-                schule=klausur.schule_kuerzel,
-                klasse=klausur.klasse
+            db = self.parent_tab.db
+            schueler_count = db.get_schueler_count_by_klasse(
+                klausur.schuljahr,
+                klausur.schule_kuerzel,
+                klausur.klasse
             )
-            
-            # In Schueler-Objekte konvertieren
-            from core.models import Schueler
-            klausur.schueler = [Schueler.from_dict(s) for s in schueler_data]
-            
-            # Anzeige aktualisieren
-            anzahl = len(klausur.schueler)
-            self.schueler_count_label.setText(f"{anzahl} Schüler geladen")
-            
-            if anzahl == 0:
-                self.schueler_count_label.setStyleSheet("font-weight: bold; color: red;")
-                QMessageBox.warning(
-                    self,
-                    "Keine Schüler",
-                    f"Keine Schüler gefunden für {klausur.klasse} im Schuljahr {schuljahr}."
-                )
-            else:
-                self.schueler_count_label.setStyleSheet("font-weight: bold; color: green;")
-            
-            self.update_preview()
-            
-        except Exception as e:
-            print(f"Fehler beim Laden der Schüler: {e}")
-            QMessageBox.warning(self, "Fehler", f"Fehler beim Laden:\n{e}")
-            
-    def update_preview(self):
-        """Vorschau aktualisieren"""
-        klausur = self.parent_tab.klausur
+        except:
+            schueler_count = 0
         
-        parts = []
-        total_seiten = 0
+        summary_html = f"""
+        <h3>📄 {klausur.thema}</h3>
+        <p><b>Schule:</b> {klausur.schule_kuerzel.upper()}<br>
+        <b>Klasse:</b> {klausur.klasse}<br>
+        <b>Fach:</b> {klausur.fach}<br>
+        <b>Typ:</b> {klausur.typ}<br>
+        <b>Datum:</b> {klausur.datum}<br>
+        <b>Dauer:</b> {klausur.zeit_minuten} Minuten</p>
         
-        # Seitenzahl pro Variante (vereinfacht: 4 Seiten)
-        seiten_pro_variante = 4
+        <p><b>Aufgaben:</b> {anzahl_aufgaben}<br>
+        <b>Gesamtpunkte:</b> {total_punkte}<br>
+        <b>Schüler:</b> {schueler_count}</p>
         
-        if self.muster_ohne_cb.isChecked():
-            parts.append(f"• Seiten 1-{seiten_pro_variante}: Muster ohne Lösung")
-            total_seiten += seiten_pro_variante
+        <p><b>→ PDFs werden generiert:</b> {schueler_count} Klassensatz-PDFs</p>
+        """
         
-        if self.muster_mit_cb.isChecked():
-            start = total_seiten + 1
-            end = total_seiten + seiten_pro_variante
-            parts.append(f"• Seiten {start}-{end}: Muster mit Lösung")
-            total_seiten += seiten_pro_variante
-        
-        anzahl_schueler = len(klausur.schueler)
-        
-        if self.klassensatz_ohne_cb.isChecked() and anzahl_schueler > 0:
-            start = total_seiten + 1
-            end = total_seiten + (anzahl_schueler * seiten_pro_variante)
-            parts.append(
-                f"• Seiten {start}-{end}: Klassensatz ohne Lösung "
-                f"({anzahl_schueler} Schüler × {seiten_pro_variante} Seiten)"
-            )
-            total_seiten += anzahl_schueler * seiten_pro_variante
-        
-        if self.klassensatz_mit_cb.isChecked() and anzahl_schueler > 0:
-            start = total_seiten + 1
-            end = total_seiten + (anzahl_schueler * seiten_pro_variante)
-            parts.append(
-                f"• Seiten {start}-{end}: Klassensatz mit Lösung "
-                f"({anzahl_schueler} Schüler × {seiten_pro_variante} Seiten)"
-            )
-            total_seiten += anzahl_schueler * seiten_pro_variante
-        
-        if not parts:
-            preview = "<b>⚠️ Keine Optionen ausgewählt</b>"
-        else:
-            preview = "<b>PDF-Inhalt:</b><br><br>"
-            preview += "<br>".join(parts)
-            preview += f"<br><br><b>Gesamt: {total_seiten} Seiten</b>"
-            
-            # Geschätzte Dateigröße
-            mb = (total_seiten * 0.03)  # ~30 KB pro Seite
-            preview += f"<br>Geschätzte Größe: ~{mb:.1f} MB"
-        
-        self.preview_text.setHtml(preview)
+        self.summary_text.setHtml(summary_html)
         
     def validate(self):
         """Validierung"""
-        
-        # Mindestens eine Option ausgewählt?
-        if not any([
-            self.muster_ohne_cb.isChecked(),
-            self.muster_mit_cb.isChecked(),
-            self.klassensatz_ohne_cb.isChecked(),
-            self.klassensatz_mit_cb.isChecked()
-        ]):
-            QMessageBox.warning(
-                self,
-                "Keine Option",
-                "Bitte wählen Sie mindestens eine PDF-Option aus."
-            )
-            return False
-        
-        # Wenn Klassensatz: Schüler vorhanden?
-        if (self.klassensatz_ohne_cb.isChecked() or self.klassensatz_mit_cb.isChecked()):
-            klausur = self.parent_tab.klausur
-            if len(klausur.schueler) == 0:
-                QMessageBox.warning(
-                    self,
-                    "Keine Schüler",
-                    "Für Klassensatz müssen Schüler geladen sein."
-                )
-                return False
-        
         return True
         
     def save_data(self):
         """Daten speichern"""
         klausur = self.parent_tab.klausur
         
-        klausur.muster_ohne_loesung = self.muster_ohne_cb.isChecked()
-        klausur.muster_mit_loesung = self.muster_mit_cb.isChecked()
-        klausur.klassensatz_ohne_loesung = self.klassensatz_ohne_cb.isChecked()
-        klausur.klassensatz_mit_loesung = self.klassensatz_mit_cb.isChecked()
+        # Speichere PDF-Optionen
+        klausur.pdf_options = {
+            'show_header': self.show_header_check.isChecked(),
+            'show_footer': self.show_footer_check.isChecked(),
+            'generate_solutions': self.generate_solutions_check.isChecked(),
+            'show_points': self.show_points_check.isChecked(),
+            'show_total': self.show_total_check.isChecked(),
+            'generate_qr': self.generate_qr_check.isChecked(),
+            'duplex_mode': self.duplex_combo.currentIndex()
+        }
         
-        print(f"Step 4 gespeichert: Optionen gesetzt, {len(klausur.schueler)} Schüler")
+        print(f"Step 4 gespeichert: PDF-Optionen konfiguriert")
         
     def reset(self):
         """Zurücksetzen"""
-        self.muster_ohne_cb.setChecked(True)
-        self.muster_mit_cb.setChecked(True)
-        self.klassensatz_ohne_cb.setChecked(True)
-        self.klassensatz_mit_cb.setChecked(False)
+        self.show_header_check.setChecked(True)
+        self.show_footer_check.setChecked(True)
+        self.generate_solutions_check.setChecked(False)
+        self.show_points_check.setChecked(True)
+        self.show_total_check.setChecked(True)
+        self.generate_qr_check.setChecked(True)
+        self.duplex_combo.setCurrentIndex(2)
+        self.summary_text.clear()
