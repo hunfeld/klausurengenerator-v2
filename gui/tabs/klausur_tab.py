@@ -713,8 +713,8 @@ class Step2AufgabenAuswahl(QWidget):
         # Ausgewählte Aufgaben (Liste von IDs)
         self.selected_aufgaben_ids = []
         
-        # LaTeX Generator (API-basiert!)
-        db_path = Path(__file__).parent.parent.parent / 'sus.db'
+        # LaTeX Generator (API-basiert!) - KORRIGIERTER PFAD!
+        db_path = Path(__file__).parent.parent.parent / 'database' / 'sus.db'
         self.latex_gen = LaTeXGenerator(db_path=str(db_path))
         
         self.setup_ui()
