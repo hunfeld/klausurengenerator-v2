@@ -2,7 +2,7 @@
 Datenbank-Verwaltung
 ====================
 
-SQLite-Anbindung für sus.db - v1.0.8 Mit get_all_grafiken()
+SQLite-Anbindung für sus.db - v1.0.9 Mit Variationen-Support
 """
 
 import sqlite3
@@ -330,6 +330,100 @@ class Database:
             "DELETE FROM aufgaben WHERE id = ?",
             (aufgabe_id,)
         )
+    
+    # ============================================================
+    # VARIATIONEN
+    # ============================================================
+    
+    def get_variations_for_aufgabe(self, aufgabe_id: int) -> List[Dict[str, Any]]:
+        """
+        Alle Variationen einer Aufgabe laden
+        
+        Args:
+            aufgabe_id: ID der Original-Aufgabe
+            
+        Returns:
+            Liste von Variationen mit allen Aufgaben-Details
+        """
+        query = """
+            SELECT 
+                a.*,
+                av.variationsgrad,
+                av.grund,
+                av.ki_generiert,
+                av.manuell_angepasst,
+                av.erstellt_am as variation_erstellt_am
+            FROM aufgaben_variationen av
+            JOIN aufgaben a ON av.variation_id = a.id
+            WHERE av.original_id = ?
+            ORDER BY av.erstellt_am DESC
+        """
+        
+        return self.execute_query(query, (aufgabe_id,))
+    
+    def has_variations(self, aufgabe_id: int) -> bool:
+        """
+        Prüft ob eine Aufgabe Variationen hat
+        
+        Args:
+            aufgabe_id: ID der Aufgabe
+            
+        Returns:
+            True wenn Variationen existieren
+        """
+        result = self.execute_query(
+            """
+            SELECT COUNT(*) as count 
+            FROM aufgaben_variationen 
+            WHERE original_id = ?
+            """,
+            (aufgabe_id,)
+        )
+        
+        return result[0]['count'] > 0 if result else False
+    
+    def count_variations(self, aufgabe_id: int) -> int:
+        """
+        Zählt die Anzahl der Variationen einer Aufgabe
+        
+        Args:
+            aufgabe_id: ID der Aufgabe
+            
+        Returns:
+            Anzahl der Variationen
+        """
+        result = self.execute_query(
+            """
+            SELECT COUNT(*) as count 
+            FROM aufgaben_variationen 
+            WHERE original_id = ?
+            """,
+            (aufgabe_id,)
+        )
+        
+        return result[0]['count'] if result else 0
+    
+    def get_original_aufgabe(self, variation_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Original-Aufgabe einer Variation laden
+        
+        Args:
+            variation_id: ID der Variation
+            
+        Returns:
+            Original-Aufgabe oder None
+        """
+        result = self.execute_query(
+            """
+            SELECT a.*
+            FROM aufgaben_variationen av
+            JOIN aufgaben a ON av.original_id = a.id
+            WHERE av.variation_id = ?
+            """,
+            (variation_id,)
+        )
+        
+        return result[0] if result else None
     
     # ============================================================
     # TEMPLATES
